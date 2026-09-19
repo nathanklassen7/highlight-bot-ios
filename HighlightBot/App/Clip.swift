@@ -13,6 +13,10 @@ final class Clip {
     var thumbnailFileName: String?
     var triggerSource: String
     var sizeBytes: Int64
+    /// User tags. Defaults let SwiftData add the column to stores that predate it.
+    var tags: [String] = []
+    /// User favourite flag. Same migration note as `tags`.
+    var isStarred: Bool = false
 
     init(record: ClipRecord) {
         id = record.id
@@ -22,6 +26,8 @@ final class Clip {
         thumbnailFileName = record.thumbnailFileName
         triggerSource = record.triggerSource.rawValue
         sizeBytes = record.sizeBytes
+        tags = record.tags
+        isStarred = record.isStarred
     }
 
     /// Value-type view of this model.
@@ -33,7 +39,9 @@ final class Clip {
             fileName: fileName,
             thumbnailFileName: thumbnailFileName,
             triggerSource: TriggerSourceID(rawValue: triggerSource),
-            sizeBytes: sizeBytes
+            sizeBytes: sizeBytes,
+            tags: tags,
+            isStarred: isStarred
         )
     }
 

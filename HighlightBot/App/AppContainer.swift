@@ -72,6 +72,8 @@ final class AppContainer {
     let coordinator: SessionCoordinator
     let pipeline: RecordingPipeline
     let clipStore: ClipStore
+    /// Active recording tags and remembered custom tags.
+    let tagPreferences: TagPreferences
     let modelContainer: ModelContainer
     /// Kept so config changes can update the eviction policy directly.
     let ringBuffer: SegmentRingBuffer
@@ -117,6 +119,7 @@ final class AppContainer {
         let modelContainer = Self.makeModelContainer()
         self.modelContainer = modelContainer
         clipStore = ClipStore(container: modelContainer)
+        tagPreferences = TagPreferences()
 
         triggerBus = TriggerBus()
         tapTrigger = TapTrigger()
@@ -277,8 +280,11 @@ final class AppContainer {
             }
             publishSaveCalloutIfIdle()
 
-        case .clipSaved(let record):
+        case .clipSaved(let pipelineRecord):
             saveBatchSucceeded = true
+            // Stamp whatever is active on the Record screen at the moment the
+            // save lands. The pipeline knows nothing about tags.
+            let record = pipelineRecord.with(tags: tagPreferences.activeTags)
             do {
                 try clipStore.insert(record)
             } catch {
@@ -370,7 +376,9 @@ final class AppContainer {
         do {
             return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)])
         } catch {
-            Log.ui.error("Persistent ModelContainer failed; falling back to in-memory: \(String(describing: error))")
+            // A failed schema migration lands here and would show an empty
+            // library. Fault-level so it is not mistaken for a fresh install.
+            Log.ui.fault("Persistent ModelContainer failed; falling back to in-memory: \(String(describing: error), privacy: .public)")
             do {
                 return try ModelContainer(
                     for: schema,

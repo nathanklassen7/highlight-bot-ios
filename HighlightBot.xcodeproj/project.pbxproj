@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		00FCE730D897899335549BC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12D7B3AA9DBD681B6CF42461 /* Assets.xcassets */; };
 		0B05204E56686468EA5BF3FD /* VoiceTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7931749DB0B8C2020D00170C /* VoiceTrigger.swift */; };
+		107B9283FF6538304677716D /* TagStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97348BA3490EE70A5AA45CC /* TagStyle.swift */; };
+		1344607B27B2CE56720B7AB2 /* TagPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189B5B71ADED022590F7175B /* TagPill.swift */; };
 		241834767E3EC217DB544259 /* SampleFanout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0842989F61DD17F77B974EBE /* SampleFanout.swift */; };
 		24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A2143011647568553306C /* FileReplayCaptureSource.swift */; };
 		2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BEEBD4CB3D63EDBA7BA8FC /* CaptureEngine.swift */; };
@@ -30,6 +32,7 @@
 		8C4EF4BFFFA49853ADCD43F7 /* CaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */; };
 		8E024044B16993A1028AB37A /* PhotosSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D86C565B7283A4733D16DE /* PhotosSaver.swift */; };
 		8E5357D04E9F07130096E969 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3C44C696CAAD0D675271F2 /* Log.swift */; };
+		93032DEB4BF764DD62AA0647 /* TagPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A3901CB662F572B1188679 /* TagPreferences.swift */; };
 		94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */; };
 		9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */; };
 		A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C10A0DE01771B762EA06D28 /* AppContainer.swift */; };
@@ -39,14 +42,18 @@
 		BC6D92A5E1A3AEE96B0CD69F /* RecordingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */; };
 		DAABD631650541C9B16AC649 /* HardwareTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C4D350387DC0268C38D25 /* HardwareTrigger.swift */; };
 		E3BE23656C303D9D3F28103F /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B88028D23895EFBC35A9BA /* Haptics.swift */; };
+		E592E0BC314207E98C66CF39 /* TagPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17283DB048FBFEDA0B066702 /* TagPickerSheet.swift */; };
 		FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8C1E328F17018C98480666 /* SettingsScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		02A3901CB662F572B1188679 /* TagPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPreferences.swift; sourceTree = "<group>"; };
 		041D36D63A4B79DAFAB2DFB9 /* Clip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clip.swift; sourceTree = "<group>"; };
 		0842989F61DD17F77B974EBE /* SampleFanout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleFanout.swift; sourceTree = "<group>"; };
 		12D7B3AA9DBD681B6CF42461 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		12DC35A01A9ECFD0E0CE63E9 /* StorageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageMonitor.swift; sourceTree = "<group>"; };
+		17283DB048FBFEDA0B066702 /* TagPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPickerSheet.swift; sourceTree = "<group>"; };
+		189B5B71ADED022590F7175B /* TagPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagPill.swift; sourceTree = "<group>"; };
 		192C4D350387DC0268C38D25 /* HardwareTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareTrigger.swift; sourceTree = "<group>"; };
 		2A8C1E328F17018C98480666 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
 		34092EE4CA7A57B1A43FD5D9 /* HighlightBot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HighlightBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -72,6 +79,7 @@
 		AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPlayerScreen.swift; sourceTree = "<group>"; };
 		B588A4FD9D2B9C24609F801D /* ClipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipStore.swift; sourceTree = "<group>"; };
 		B69648746A8204553FB069B8 /* PreviewLayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewLayerView.swift; sourceTree = "<group>"; };
+		B97348BA3490EE70A5AA45CC /* TagStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagStyle.swift; sourceTree = "<group>"; };
 		BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSource.swift; sourceTree = "<group>"; };
 		BFF01A657AE8AFD210E933EC /* SegmentedRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedRecorder.swift; sourceTree = "<group>"; };
 		D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImage.swift; sourceTree = "<group>"; };
@@ -99,6 +107,7 @@
 				8CA96B1128AEDDF715AD6A4B /* Library */,
 				6E239651C236DE0409EBC748 /* Record */,
 				70A245ED0224A3059CC41BF1 /* Settings */,
+				A17B2068BF9AB98005EAE231 /* Tags */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -124,6 +133,7 @@
 				52B88028D23895EFBC35A9BA /* Haptics.swift */,
 				F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */,
 				7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */,
+				02A3901CB662F572B1188679 /* TagPreferences.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -186,6 +196,16 @@
 				FB5C1480F003CB08A5BAE795 /* Packages */,
 				70B03F495598F1088861BEF1 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A17B2068BF9AB98005EAE231 /* Tags */ = {
+			isa = PBXGroup;
+			children = (
+				17283DB048FBFEDA0B066702 /* TagPickerSheet.swift */,
+				189B5B71ADED022590F7175B /* TagPill.swift */,
+				B97348BA3490EE70A5AA45CC /* TagStyle.swift */,
+			);
+			path = Tags;
 			sourceTree = "<group>";
 		};
 		BDA3A8E5B0251551A2A9E70A /* Capture */ = {
@@ -332,6 +352,10 @@
 				FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */,
 				36F112ED5C6E5502FC875759 /* SettingsStore.swift in Sources */,
 				891768BDB82A73DF5E40329C /* StorageMonitor.swift in Sources */,
+				E592E0BC314207E98C66CF39 /* TagPickerSheet.swift in Sources */,
+				1344607B27B2CE56720B7AB2 /* TagPill.swift in Sources */,
+				93032DEB4BF764DD62AA0647 /* TagPreferences.swift in Sources */,
+				107B9283FF6538304677716D /* TagStyle.swift in Sources */,
 				4185208EFB18B1143896FD0A /* TapTrigger.swift in Sources */,
 				571535839C8EEE4CF16B6DCB /* ThermalMonitor.swift in Sources */,
 				AB0C00E2087227ACA9C7764E /* ThumbnailImage.swift in Sources */,

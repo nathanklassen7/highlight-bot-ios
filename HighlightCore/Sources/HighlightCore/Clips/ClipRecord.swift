@@ -15,6 +15,10 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
     public let triggerSource: TriggerSourceID
     /// Size of the clip file in bytes.
     public let sizeBytes: Int64
+    /// User tags (sport or anything else). Normalized via `ClipTag`.
+    public let tags: [String]
+    /// User favourite flag.
+    public let isStarred: Bool
 
     public init(
         id: UUID,
@@ -23,7 +27,9 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
         fileName: String,
         thumbnailFileName: String?,
         triggerSource: TriggerSourceID,
-        sizeBytes: Int64
+        sizeBytes: Int64,
+        tags: [String] = [],
+        isStarred: Bool = false
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -32,5 +38,43 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
         self.thumbnailFileName = thumbnailFileName
         self.triggerSource = triggerSource
         self.sizeBytes = sizeBytes
+        self.tags = tags
+        self.isStarred = isStarred
+    }
+
+    /// Copy with different user metadata. Capture fields are immutable.
+    public func with(tags: [String]? = nil, isStarred: Bool? = nil) -> ClipRecord {
+        ClipRecord(
+            id: id,
+            createdAt: createdAt,
+            duration: duration,
+            fileName: fileName,
+            thumbnailFileName: thumbnailFileName,
+            triggerSource: triggerSource,
+            sizeBytes: sizeBytes,
+            tags: tags ?? self.tags,
+            isStarred: isStarred ?? self.isStarred
+        )
+    }
+
+    // MARK: - Codable
+
+    // Custom decoding so records written before `tags` / `isStarred` existed
+    // still decode (missing keys → defaults).
+    private enum CodingKeys: String, CodingKey {
+        case id, createdAt, duration, fileName, thumbnailFileName, triggerSource, sizeBytes, tags, isStarred
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        duration = try container.decode(TimeInterval.self, forKey: .duration)
+        fileName = try container.decode(String.self, forKey: .fileName)
+        thumbnailFileName = try container.decodeIfPresent(String.self, forKey: .thumbnailFileName)
+        triggerSource = try container.decode(TriggerSourceID.self, forKey: .triggerSource)
+        sizeBytes = try container.decode(Int64.self, forKey: .sizeBytes)
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        isStarred = try container.decodeIfPresent(Bool.self, forKey: .isStarred) ?? false
     }
 }

@@ -60,6 +60,48 @@ final class ClipStore {
         return try? context.fetch(descriptor).first
     }
 
+    // MARK: - Tags and favourites
+
+    /// Replaces the clip's tags with the normalized, de-duplicated `tags`.
+    func updateTags(_ clip: Clip, tags: [String]) throws {
+        clip.tags = ClipTag.normalized(tags)
+        try context.save()
+    }
+
+    /// Unions `tags` onto every clip in `clips` (bulk tag from select mode).
+    func addTags(_ clips: [Clip], tags: [String]) throws {
+        let additions = ClipTag.normalized(tags)
+        guard !additions.isEmpty else { return }
+        for clip in clips {
+            clip.tags = ClipTag.merge(clip.tags, additions)
+        }
+        try context.save()
+    }
+
+    func setStarred(_ clip: Clip, isStarred: Bool) throws {
+        clip.isStarred = isStarred
+        try context.save()
+    }
+
+    func setStarred(_ clips: [Clip], isStarred: Bool) throws {
+        for clip in clips {
+            clip.isStarred = isStarred
+        }
+        try context.save()
+    }
+
+    /// Every distinct tag currently on at least one clip, de-duplicated
+    /// case-insensitively and sorted for display. Empty on fetch failure.
+    func usedTags() -> [String] {
+        do {
+            let all = try context.fetch(FetchDescriptor<Clip>())
+            return ClipTag.sortedForDisplay(ClipTag.merge([], all.flatMap(\.tags)))
+        } catch {
+            Log.ui.error("usedTags fetch failed: \(String(describing: error))")
+            return []
+        }
+    }
+
     private func removeFiles(for record: ClipRecord) {
         let fm = FileManager.default
         var urls = [record.fileURL]
