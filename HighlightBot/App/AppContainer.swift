@@ -68,6 +68,7 @@ final class AppContainer {
     let triggerBus: TriggerBus
     let tapTrigger: TapTrigger
     let hardwareTrigger: HardwareTrigger
+    let voiceTrigger: VoiceTrigger
     let coordinator: SessionCoordinator
     let pipeline: RecordingPipeline
     let clipStore: ClipStore
@@ -93,9 +94,14 @@ final class AppContainer {
     var saveCallout: SaveCallout?
     /// Mirror of `coordinator.selectedClipSeconds` for the UI picker.
     var selectedClipSeconds: TimeInterval
+    /// True while the voice trigger is listening for "clip it".
+    var isVoiceListening = false
 
     @ObservationIgnored private var saveBatchSucceeded = false
     @ObservationIgnored private var saveBatchFailed = false
+    /// Set once per session so a permission problem is reported once, not on
+    /// every state change.
+    @ObservationIgnored private var voiceProblemReported = false
 
     @ObservationIgnored private let backendProxy: BackendProxy
     @ObservationIgnored private var started = false
@@ -115,6 +121,8 @@ final class AppContainer {
         triggerBus = TriggerBus()
         tapTrigger = TapTrigger()
         hardwareTrigger = HardwareTrigger()
+        let voiceTrigger = VoiceTrigger()
+        self.voiceTrigger = voiceTrigger
 
         let frameTap = FrameTap()
         let ringBuffer = SegmentRingBuffer(
@@ -135,6 +143,7 @@ final class AppContainer {
             ringBuffer: ringBuffer,
             exporter: exporter,
             frameTap: frameTap,
+            audioListener: voiceTrigger,
             coordinator: coordinator
         )
         self.pipeline = pipeline
@@ -166,6 +175,11 @@ final class AppContainer {
         } catch {
             Log.ui.error("Failed to register HardwareTrigger: \(String(describing: error))")
         }
+        do {
+            try await triggerBus.register(voiceTrigger)
+        } catch {
+            Log.ui.error("Failed to register VoiceTrigger: \(String(describing: error))")
+        }
 
         let coordinator = coordinator
         let bus = triggerBus
@@ -192,6 +206,7 @@ final class AppContainer {
 
         sessionState = await coordinator.state
         selectedClipSeconds = await coordinator.selectedClipSeconds
+        updateVoiceListening()
     }
 
     // MARK: - Actions
@@ -256,6 +271,7 @@ final class AppContainer {
                 Haptics.toggled()
             }
             sessionState = state
+            updateVoiceListening()
             if Self.pendingSaves(in: state) > 0 {
                 saveCallout = nil
             }
@@ -305,10 +321,40 @@ final class AppContainer {
         return 0
     }
 
+    /// Listen exactly while a session is live and the voice trigger is on.
+    /// `.interrupted` counts as live: audio simply stops arriving until the
+    /// capture resumes, and the request restarts on its own if it errors.
+    private func updateVoiceListening() {
+        let shouldListen = sessionState.isRecording && settings.config.voiceTriggerEnabled
+        if !sessionState.isRecording {
+            voiceProblemReported = false
+        }
+        guard shouldListen else {
+            voiceTrigger.endListening()
+            isVoiceListening = false
+            return
+        }
+        // Pending-save changes also arrive here; nothing to do once listening.
+        if isVoiceListening { return }
+        if let problem = VoiceTrigger.availabilityProblem() {
+            voiceTrigger.endListening()
+            isVoiceListening = false
+            if !voiceProblemReported {
+                voiceProblemReported = true
+                Log.voice.notice("Voice trigger unavailable: \(problem, privacy: .public)")
+                errorMessage = problem
+            }
+            return
+        }
+        voiceTrigger.beginListening()
+        isVoiceListening = true
+    }
+
     private func applyConfig(_ config: RecordingConfig) {
         if selectedClipSeconds > config.bufferSeconds {
             setClipSeconds(config.bufferSeconds)
         }
+        updateVoiceListening()
         let ringBuffer = ringBuffer
         let pipeline = pipeline
         let coordinator = coordinator

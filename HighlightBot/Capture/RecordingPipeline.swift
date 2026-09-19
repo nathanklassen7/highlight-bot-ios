@@ -80,6 +80,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     private let ring: SegmentRingBuffer
     private let exporter: ClipExporter
     private let frameTap: FrameTap
+    private let audioListener: (any AudioSampleListener)?
     private let coordinator: SessionCoordinator
     private let thermal = ThermalMonitor()
     private let recorderQueue = DispatchQueue(label: "com.highlightbot.recorder", qos: .utility)
@@ -106,11 +107,13 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
          ringBuffer: SegmentRingBuffer,
          exporter: ClipExporter,
          frameTap: FrameTap,
+         audioListener: (any AudioSampleListener)? = nil,
          coordinator: SessionCoordinator) {
         self.source = source
         self.ring = ringBuffer
         self.exporter = exporter
         self.frameTap = frameTap
+        self.audioListener = audioListener
         self.coordinator = coordinator
         self.state = OSAllocatedUnfairLock(initialState: State(config: config, currentFrameRate: config.frameRate))
     }
@@ -217,7 +220,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         ) { [weak self] segment in
             self?.handleSegment(segment)
         }
-        let fanout = SampleFanout(recorder: recorder, frameTap: frameTap)
+        let fanout = SampleFanout(recorder: recorder, frameTap: frameTap, audioListener: audioListener)
         // start() allocates the encoder; keep it ahead of setConsumer so that
         // work never lands inside a capture callback.
         recorder.start()

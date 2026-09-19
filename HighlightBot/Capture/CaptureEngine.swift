@@ -29,8 +29,9 @@ enum CaptureError: LocalizedError {
 }
 
 /// The real camera. Owns one `AVCaptureSession` with a video data output and,
-/// when `recordAudio` is on, an audio data output. Both deliver on a dedicated
-/// serial queue and are forwarded verbatim to the current `SampleConsumer`.
+/// when `recordAudio` or `voiceTriggerEnabled` is on, an audio data output.
+/// Both deliver on a dedicated serial queue and are forwarded verbatim to the
+/// current `SampleConsumer`.
 ///
 /// Threading: all session/device configuration happens on `queue`. Public
 /// async methods hop onto it and resume a continuation when done.
@@ -299,7 +300,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             }
         }
 
-        if config.recordAudio {
+        if config.needsMicrophone {
             if let mic = AVCaptureDevice.default(for: .audio) {
                 let micInput = try AVCaptureDeviceInput(device: mic)
                 if session.canAddInput(micInput) {
@@ -331,7 +332,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     }
 
     private func activateAudioSessionIfNeeded() throws {
-        guard config?.recordAudio == true, audioDeviceInput != nil else { return }
+        guard config?.needsMicrophone == true, audioDeviceInput != nil else { return }
         let audioSession = AVAudioSession.sharedInstance()
         // Built-in mic only. Allowing Bluetooth HFP would route the microphone through
         // any connected headset/watch/car at narrowband quality, which sounds like loud
@@ -341,7 +342,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     }
 
     private func deactivateAudioSession() {
-        guard config?.recordAudio == true else { return }
+        guard config?.needsMicrophone == true else { return }
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {

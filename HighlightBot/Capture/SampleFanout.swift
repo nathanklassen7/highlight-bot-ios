@@ -5,7 +5,8 @@ import OSLog
 
 /// The one object on the capture queue. Every video sample goes to the
 /// recorder (synchronously, on this thread) and its pixel buffer to the
-/// `FrameTap` (non-blocking). Audio goes to the recorder only.
+/// `FrameTap` (non-blocking). Audio goes to the recorder and, if one is set,
+/// the `AudioSampleListener` (voice trigger).
 ///
 /// Timing of each video callback is recorded so the debug overlay and the
 /// Phase 0 spike can check the <1 ms budget (`lastCallbackMicros`).
@@ -23,11 +24,13 @@ final class SampleFanout: SampleConsumer, Sendable {
 
     let recorder: SegmentedRecorder
     let frameTap: FrameTap
+    let audioListener: (any AudioSampleListener)?
     private let counters = OSAllocatedUnfairLock(initialState: Counters())
 
-    init(recorder: SegmentedRecorder, frameTap: FrameTap) {
+    init(recorder: SegmentedRecorder, frameTap: FrameTap, audioListener: (any AudioSampleListener)? = nil) {
         self.recorder = recorder
         self.frameTap = frameTap
+        self.audioListener = audioListener
     }
 
     func consumeVideo(_ sampleBuffer: CMSampleBuffer) {
@@ -52,7 +55,10 @@ final class SampleFanout: SampleConsumer, Sendable {
     }
 
     func consumeAudio(_ sampleBuffer: CMSampleBuffer) {
+        // The recorder ignores audio when `recordAudio` is off (no audio input),
+        // so the mic can feed the listener alone.
         recorder.appendAudio(sampleBuffer)
+        audioListener?.consumeAudio(sampleBuffer)
         counters.withLock { $0.audioBuffers += 1 }
     }
 

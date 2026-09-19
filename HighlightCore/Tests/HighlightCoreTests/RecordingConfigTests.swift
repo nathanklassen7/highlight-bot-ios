@@ -18,6 +18,7 @@ struct RecordingConfigTests {
         #expect(config.inactivityTimeout == 45 * 60)
         #expect(config.minimumFreeBytes == 500 * 1024 * 1024)
         #expect(config.debugOverlayEnabled == false)
+        #expect(config.voiceTriggerEnabled == false)
         #expect(RecordingConfig.bufferOptions == [10, 20, 30, 60])
         #expect(RecordingConfig.frameRateOptions == [30, 60, 120])
         #expect(RecordingConfig.maxFrameRateFor1080p == 60)
@@ -80,9 +81,22 @@ struct RecordingConfigTests {
         config.codec = .hevc
         config.bufferSeconds = 30
         config.lens = .ultraWide
+        config.voiceTriggerEnabled = true
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
         #expect(decoded == config)
+    }
+
+    @Test("decodes configs persisted before `voiceTriggerEnabled` existed as off")
+    func decodesWithoutVoiceTrigger() throws {
+        var object = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(RecordingConfig.default)
+        ) as! [String: Any]
+        object.removeValue(forKey: "voiceTriggerEnabled")
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
+        #expect(decoded.voiceTriggerEnabled == false)
+        #expect(decoded == .default)
     }
 
     @Test("decodes configs persisted before `lens` existed as wide")
@@ -95,6 +109,14 @@ struct RecordingConfigTests {
         let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
         #expect(decoded.lens == .wide)
         #expect(decoded == .default)
+    }
+
+    @Test("microphone is needed for recorded audio or the voice trigger")
+    func needsMicrophone() {
+        #expect(RecordingConfig(recordAudio: true, voiceTriggerEnabled: false).needsMicrophone)
+        #expect(RecordingConfig(recordAudio: false, voiceTriggerEnabled: true).needsMicrophone)
+        #expect(RecordingConfig(recordAudio: true, voiceTriggerEnabled: true).needsMicrophone)
+        #expect(!RecordingConfig(recordAudio: false, voiceTriggerEnabled: false).needsMicrophone)
     }
 
     @Test("camera lens labels and toggle")

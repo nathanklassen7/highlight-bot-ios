@@ -44,6 +44,7 @@ targets:
         NSCameraUsageDescription: Highlight Bot records video continuously so you can save the last few seconds as a clip.
         NSMicrophoneUsageDescription: Highlight Bot records audio along with video for your clips.
         NSPhotoLibraryAddUsageDescription: Highlight Bot saves clips you choose to your Photos library.
+        NSSpeechRecognitionUsageDescription: Highlight Bot listens for “Clip it” while recording so you can save a clip hands-free. Recognition runs on this device.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UISupportedInterfaceOrientations:

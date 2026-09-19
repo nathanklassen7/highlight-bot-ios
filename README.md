@@ -27,7 +27,7 @@ In Xcode, select the `HighlightBot` target → Signing & Capabilities → set yo
 HighlightBot/            App target (SwiftUI + AVFoundation)
   App/                   Entry point, AppContainer (DI), SettingsStore, SwiftData ClipStore
   Capture/               CaptureEngine, SegmentedRecorder, ClipExporter, RecordingPipeline
-  Triggers/              TapTrigger, HardwareTrigger
+  Triggers/              TapTrigger, HardwareTrigger, VoiceTrigger
   Features/              Record, Library, Settings screens
   Support/               Permissions, storage/thermal monitors, logging
   Resources/             Asset catalog; drop replay.mov here for the Simulator
@@ -57,6 +57,9 @@ The Simulator has no camera, so Simulator builds replay a bundled video through 
 | Long-press (0.6 s) | Starts recording | Stops recording (also wakes the dimmed screen) |
 | Volume button, Camera Control, Bluetooth shutter (e.g. AB Shutter3) | — | Saves the last *n* seconds |
 | Record/stop button | Starts | Stops |
+| Saying "clip it" (Settings › Voice, off by default) | — | Saves the last *n* seconds |
+
+The voice trigger uses on-device `SFSpeechRecognizer` (English) on the microphone audio the capture session already delivers, so it needs microphone and Speech Recognition permission but no network, and it only listens while recording. With "Record audio" off, the microphone is still opened for it.
 
 *n* is picked on the Record screen (10 / 20 / 30 / 60 s, capped at the buffer length in Settings; default 20 s). Saving never stops recording; several saves can be in flight at once. Recording stops itself after the inactivity timeout (default 45 min) with a warning 5 minutes before.
 

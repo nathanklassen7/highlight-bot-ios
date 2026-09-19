@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00FCE730D897899335549BC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12D7B3AA9DBD681B6CF42461 /* Assets.xcassets */; };
+		0B05204E56686468EA5BF3FD /* VoiceTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7931749DB0B8C2020D00170C /* VoiceTrigger.swift */; };
 		241834767E3EC217DB544259 /* SampleFanout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0842989F61DD17F77B974EBE /* SampleFanout.swift */; };
 		24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A2143011647568553306C /* FileReplayCaptureSource.swift */; };
 		2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BEEBD4CB3D63EDBA7BA8FC /* CaptureEngine.swift */; };
@@ -60,6 +61,7 @@
 		6294A5C9A65CAC5A8EE46795 /* ThermalMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalMonitor.swift; sourceTree = "<group>"; };
 		6436EEF02F4EA492BFB30A2B /* RecordScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordScreen.swift; sourceTree = "<group>"; };
 		6D3C44C696CAAD0D675271F2 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
+		7931749DB0B8C2020D00170C /* VoiceTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTrigger.swift; sourceTree = "<group>"; };
 		7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		83EA040C70A9C59465323ED2 /* DebugOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlay.swift; sourceTree = "<group>"; };
 		908459397F1630092D59F39E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 			children = (
 				192C4D350387DC0268C38D25 /* HardwareTrigger.swift */,
 				EA14FB816379FF37F46C4D57 /* TapTrigger.swift */,
+				7931749DB0B8C2020D00170C /* VoiceTrigger.swift */,
 			);
 			path = Triggers;
 			sourceTree = "<group>";
@@ -332,6 +335,7 @@
 				4185208EFB18B1143896FD0A /* TapTrigger.swift in Sources */,
 				571535839C8EEE4CF16B6DCB /* ThermalMonitor.swift in Sources */,
 				AB0C00E2087227ACA9C7764E /* ThumbnailImage.swift in Sources */,
+				0B05204E56686468EA5BF3FD /* VoiceTrigger.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -28,6 +28,13 @@ protocol SampleConsumer: AnyObject {
     func didDropVideoFrame()
 }
 
+/// Receives a copy of every microphone buffer on the capture queue, after
+/// the recorder has appended it. Same <1 ms rule as `SampleConsumer`: hand
+/// the buffer off and return. Used by the voice trigger.
+protocol AudioSampleListener: AnyObject, Sendable {
+    func consumeAudio(_ sampleBuffer: CMSampleBuffer)
+}
+
 /// A camera or a file replay. Not an actor: each implementation owns its own
 /// serial queue and hops onto it for configuration and lifecycle work.
 protocol CaptureSource: AnyObject {

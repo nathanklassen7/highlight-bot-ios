@@ -175,6 +175,10 @@ struct RecordScreen: View {
                             .fontWeight(.bold)
                         Text(elapsedText(at: context.date))
                             .monospacedDigit()
+                        if container.isVoiceListening {
+                            Image(systemName: "waveform")
+                                .accessibilityLabel("Listening for “clip it”")
+                        }
                     }
                 }
             case .interrupted:
@@ -370,7 +374,7 @@ struct RecordScreen: View {
         return true
         #else
         let permissions = container.permissions
-        let microphoneOK = !container.settings.config.recordAudio || permissions.microphone == .granted
+        let microphoneOK = !container.settings.config.needsMicrophone || permissions.microphone == .granted
         return permissions.camera == .granted && microphoneOK
         #endif
     }
@@ -460,14 +464,15 @@ private struct DimmedModeView: View {
     }
 }
 
-/// Shown until camera (and, if audio is on, microphone) access is granted.
+/// Shown until camera (and, if audio or the voice trigger is on, microphone)
+/// access is granted.
 private struct PermissionsGateView: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         let permissions = container.permissions
-        let needsMic = container.settings.config.recordAudio
+        let needsMic = container.settings.config.needsMicrophone
         let anyDenied = [permissions.camera, permissions.microphone].contains { $0 == .denied || $0 == .restricted }
 
         VStack(spacing: 20) {

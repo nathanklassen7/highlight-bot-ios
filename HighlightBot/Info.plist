@@ -30,6 +30,8 @@
 	<string>Highlight Bot records audio along with video for your clips.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Highlight Bot saves clips you choose to your Photos library.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Highlight Bot listens for “Clip it” while recording so you can save a clip hands-free. Recognition runs on this device.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

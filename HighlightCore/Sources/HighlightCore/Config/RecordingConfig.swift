@@ -34,6 +34,9 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     public var debugOverlayEnabled: Bool
     /// Which back camera to capture from.
     public var lens: CameraLens
+    /// Whether saying "clip it" while recording saves a clip. Needs the
+    /// microphone even when `recordAudio` is off.
+    public var voiceTriggerEnabled: Bool
 
     public init(
         bufferSeconds: TimeInterval = 20,
@@ -47,7 +50,8 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         inactivityTimeout: TimeInterval = 45 * 60,
         minimumFreeBytes: Int64 = 500 * 1024 * 1024,
         debugOverlayEnabled: Bool = false,
-        lens: CameraLens = .wide
+        lens: CameraLens = .wide,
+        voiceTriggerEnabled: Bool = false
     ) {
         self.bufferSeconds = bufferSeconds
         self.segmentInterval = segmentInterval
@@ -61,9 +65,11 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         self.minimumFreeBytes = minimumFreeBytes
         self.debugOverlayEnabled = debugOverlayEnabled
         self.lens = lens
+        self.voiceTriggerEnabled = voiceTriggerEnabled
     }
 
-    // Custom decoding so configs persisted before `lens` existed still load.
+    // Custom decoding so configs persisted before `lens` / `voiceTriggerEnabled`
+    // existed still load.
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bufferSeconds = try c.decode(TimeInterval.self, forKey: .bufferSeconds)
@@ -78,6 +84,7 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         minimumFreeBytes = try c.decode(Int64.self, forKey: .minimumFreeBytes)
         debugOverlayEnabled = try c.decode(Bool.self, forKey: .debugOverlayEnabled)
         lens = try c.decodeIfPresent(CameraLens.self, forKey: .lens) ?? .wide
+        voiceTriggerEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceTriggerEnabled) ?? false
     }
 
     /// The default configuration.
@@ -101,6 +108,13 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         // (e.g. 0.9 / 0.3) do not round up because of binary representation.
         let ratio = bufferSeconds / segmentInterval - 1e-9
         return max(1, Int(ratio.rounded(.up)))
+    }
+
+    /// Whether the microphone must be opened: for recorded audio, for the
+    /// voice trigger, or both. The recorder only writes audio when
+    /// `recordAudio` is on.
+    public var needsMicrophone: Bool {
+        recordAudio || voiceTriggerEnabled
     }
 
     /// Seconds the ring must retain so that a whole-segment clip can always

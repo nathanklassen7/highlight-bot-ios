@@ -13,6 +13,7 @@ enum Log {
     static let ring = Logger(subsystem: subsystem, category: "ring")
     static let export = Logger(subsystem: subsystem, category: "export")
     static let session = Logger(subsystem: subsystem, category: "session")
+    static let voice = Logger(subsystem: subsystem, category: "voice")
     static let ui = Logger(subsystem: subsystem, category: "ui")
 }
 

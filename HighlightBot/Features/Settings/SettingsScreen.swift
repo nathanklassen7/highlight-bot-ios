@@ -1,9 +1,11 @@
 import HighlightCore
 import SwiftUI
+import UIKit
 
 /// Editable `RecordingConfig` plus storage management and debug toggles.
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
+    @Environment(\.openURL) private var openURL
 
     @State private var usedBytes: Int64 = 0
     @State private var showDeleteAllConfirm = false
@@ -94,6 +96,21 @@ struct SettingsScreen: View {
                     }
                 }
 
+                Section {
+                    Toggle("Save a clip on “Clip it”", isOn: $settings.config.voiceTriggerEnabled)
+                    if settings.config.voiceTriggerEnabled, voicePermissionDenied {
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                openURL(url)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Voice")
+                } footer: {
+                    Text(voiceFooter)
+                }
+
                 Section("Storage") {
                     LabeledContent("Clips on device", value: ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file))
                     Button("Delete all clips", role: .destructive) {
@@ -144,8 +161,18 @@ struct SettingsScreen: View {
                 guard !Task.isCancelled else { return }
                 statusMessage = nil
             }
-            .onAppear { refreshStorage() }
+            .onAppear {
+                refreshStorage()
+                container.permissions.refresh()
+            }
             .onChange(of: container.lastClip) { _, _ in refreshStorage() }
+            .onChange(of: settings.config.voiceTriggerEnabled) { _, enabled in
+                guard enabled else { return }
+                Task {
+                    _ = await container.permissions.requestMicrophone()
+                    _ = await container.permissions.requestSpeech()
+                }
+            }
             .onChange(of: settings.config.frameRate) { _, fps in
                 if fps > RecordingConfig.maxFrameRateFor1080p {
                     let size = Resolution.p720.size
@@ -164,6 +191,29 @@ struct SettingsScreen: View {
                 }
             }
         }
+    }
+
+    // MARK: - Voice
+
+    private var voicePermissionDenied: Bool {
+        let permissions = container.permissions
+        return [permissions.speech, permissions.microphone].contains { $0 == .denied || $0 == .restricted }
+    }
+
+    private var voiceFooter: String {
+        let permissions = container.permissions
+        let base = "While recording, saying “clip it” saves the selected clip length. Recognition runs on this device; audio is not sent anywhere."
+        guard container.settings.config.voiceTriggerEnabled else { return base }
+        if permissions.speech == .denied || permissions.speech == .restricted {
+            return "Speech Recognition is turned off for Highlight Bot. Turn it on in Settings to use the voice trigger."
+        }
+        if permissions.microphone == .denied || permissions.microphone == .restricted {
+            return "Microphone access is turned off for Highlight Bot. Turn it on in Settings to use the voice trigger."
+        }
+        if container.sessionState.isRecording, !container.settings.config.recordAudio {
+            return base + " With audio recording off, the microphone opens the next time recording starts."
+        }
+        return base
     }
 
     // MARK: - Actions
