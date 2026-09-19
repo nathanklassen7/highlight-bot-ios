@@ -13,7 +13,7 @@ struct ClipPlayerScreen: View {
 
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
-    @State private var isLooping = true
+    @State private var isLooping = false
     @State private var rate: Float = 1.0
     @State private var isSpeedMenuExpanded = false
     @State private var showDeleteConfirm = false
@@ -153,6 +153,9 @@ struct ClipPlayerScreen: View {
 
             playPauseButton
         }
+        .overlayPreferenceValue(SpeedMenuAnchorKey.self) { anchor in
+            speedMenuOverlay(anchor: anchor)
+        }
     }
 
     private var playPauseButton: some View {
@@ -258,12 +261,21 @@ struct ClipPlayerScreen: View {
         .buttonStyle(.plain)
         .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
         .accessibilityValue(percentLabel(for: rate))
-        .overlay(alignment: .topLeading) {
-            if isSpeedMenuExpanded {
+        .anchorPreference(key: SpeedMenuAnchorKey.self, value: .bounds) { $0 }
+    }
+
+    /// Positions `speedMenu` so its bottom edge sits just above the bottom bar,
+    /// left-aligned with the speed trigger. Attached as an overlay on the chrome
+    /// so the menu floats over the scrubber instead of participating in layout.
+    private func speedMenuOverlay(anchor: Anchor<CGRect>?) -> some View {
+        GeometryReader { proxy in
+            if isSpeedMenuExpanded, let anchor {
+                let trigger = proxy[anchor]
                 speedMenu
-                    // Bottom of the menu sits above the bar's top edge: the bar's
-                    // vertical padding (10) plus an 8pt gap.
-                    .alignmentGuide(.top) { $0[.bottom] + 18 }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    // Trigger top is inside the bar's 10pt vertical padding; add an 8pt gap.
+                    .padding(.leading, trigger.minX)
+                    .padding(.bottom, proxy.size.height - trigger.minY + 18)
                     .transition(.scale(scale: 0.9, anchor: .bottomLeading).combined(with: .opacity))
             }
         }
@@ -489,6 +501,15 @@ struct ClipPlayerScreen: View {
         } catch {
             statusMessage = "Delete failed: \(error.localizedDescription)"
         }
+    }
+}
+
+/// Bounds of the speed trigger, used to anchor the speed menu above the bottom bar.
+private struct SpeedMenuAnchorKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
 
