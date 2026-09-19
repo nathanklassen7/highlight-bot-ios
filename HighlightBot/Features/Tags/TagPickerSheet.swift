@@ -10,19 +10,30 @@ import SwiftUI
 /// normalized selection when the user taps Done. Cancel discards the draft.
 /// Newly added custom tags are remembered in `TagPreferences` on save.
 struct TagPickerSheet: View {
-    var title = "Tags"
-    let initialSelection: [String]
+    let title: String
     /// Bulk mode: the sheet starts empty and the caller unions the result.
-    var footnote: String? = nil
+    let footnote: String?
     let onSave: ([String]) -> Void
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selection: [String] = []
+    @State private var selection: [String]
     @State private var previous: [String] = []
     @State private var customText = ""
     @FocusState private var customFieldFocused: Bool
+
+    init(
+        title: String = "Tags",
+        initialSelection: [String],
+        footnote: String? = nil,
+        onSave: @escaping ([String]) -> Void
+    ) {
+        self.title = title
+        self.footnote = footnote
+        self.onSave = onSave
+        _selection = State(initialValue: ClipTag.normalized(initialSelection))
+    }
 
     var body: some View {
         NavigationStack {
@@ -62,7 +73,6 @@ struct TagPickerSheet: View {
             }
         }
         .onAppear {
-            selection = ClipTag.normalized(initialSelection)
             previous = container.tagPreferences.previousTags(usedOnClips: container.clipStore.usedTags())
         }
     }

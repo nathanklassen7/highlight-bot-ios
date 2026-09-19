@@ -439,7 +439,8 @@ struct LibraryScreen: View {
         if isSelecting {
             exitSelection()
         }
-        playerRecord = clip
+        // `lastClip` is a snapshot; tags/star may have changed since it was taken.
+        playerRecord = container.clipStore.clip(withID: clip.id)?.record ?? clip
     }
 
     private func deletePending() {
@@ -513,6 +514,10 @@ struct LibraryScreen: View {
         guard !targets.isEmpty else { return }
         do {
             try container.clipStore.addTags(targets, tags: tags)
+            if let lastID = container.lastClip?.id,
+               let updated = targets.first(where: { $0.id == lastID }) {
+                container.lastClip = updated.record
+            }
             let count = targets.count
             statusMessage = "Tagged \(count) clip\(count == 1 ? "" : "s")"
         } catch {
