@@ -77,6 +77,37 @@ struct BallTrackerTests {
         #expect(states.last == .tracking)
     }
 
+    @Test("reacquires around the last position when a hard reversal escapes the prediction gate")
+    func reacquiresAfterHardReversal() {
+        var tracker = BallTracker()
+        var t = 0.0
+        var x = 0.2
+        var frames: [BallTrackFrame] = []
+        // 2.0 u/s keeps per-frame displacement (0.04) inside the 0.05 gate so the track confirms.
+        for _ in 0..<8 {
+            x += 2.0 * dt
+            frames.append(tracker.update(time: t, candidates: [obs(t, x, 0.5)]))
+            t += dt
+        }
+        // 3.0 u/s: at reversal, prediction overshoot (0.12) exceeds gate (0.11) but measurement
+        // stays within reacquireRadius (0.15) of the last position.
+        let reversalFrameIndex = frames.count + 5
+        for i in 0..<10 {
+            let vx = i < 5 ? 3.0 : -3.0
+            x += vx * dt
+            frames.append(tracker.update(time: t, candidates: [obs(t, x, 0.5)]))
+            t += dt
+        }
+        let beforeReversal = reversalFrameIndex - 1
+        let afterReversal = reversalFrameIndex
+        #expect(frames[beforeReversal].state == .tracking)
+        #expect(frames[afterReversal].state == .tracking)
+        #expect(!frames.dropFirst(3).contains { $0.state == .searching || $0.state == .coasting })
+        #expect((frames[beforeReversal].velocity?.dx ?? 0) > 0)
+        #expect((frames[afterReversal].velocity?.dx ?? 0) < 0)
+        #expect(abs((frames.last?.position?.x ?? 0) - x) < 0.02)
+    }
+
     @Test("ignores a far-away spurious candidate while tracking")
     func ignoresOutlier() {
         var tracker = BallTracker()
