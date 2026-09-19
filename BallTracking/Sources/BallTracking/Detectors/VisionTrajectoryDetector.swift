@@ -34,16 +34,11 @@ public final class VisionTrajectoryDetector: BallDetector, @unchecked Sendable {
     public let name = "vision-trajectory"
     private let config: Config
     private var handler = VNSequenceRequestHandler()
-    private let request: VNDetectTrajectoriesRequest
+    private var request: VNDetectTrajectoriesRequest
 
     public init(config: Config = .default) {
         self.config = config
-        request = VNDetectTrajectoriesRequest(frameAnalysisSpacing: .zero,
-                                              trajectoryLength: max(5, config.trajectoryLength),
-                                              completionHandler: nil)
-        request.objectMinimumNormalizedRadius = config.minimumNormalizedRadius
-        request.objectMaximumNormalizedRadius = config.maximumNormalizedRadius
-        request.targetFrameTime = config.frameDuration
+        request = Self.makeRequest(config: config)
     }
 
     public func detect(pixelBuffer: CVPixelBuffer, time: CMTime) throws -> [BallObservation] {
@@ -63,5 +58,16 @@ public final class VisionTrajectoryDetector: BallDetector, @unchecked Sendable {
 
     public func reset() {
         handler = VNSequenceRequestHandler()
+        request = Self.makeRequest(config: config)
+    }
+
+    private static func makeRequest(config: Config) -> VNDetectTrajectoriesRequest {
+        let request = VNDetectTrajectoriesRequest(frameAnalysisSpacing: .zero,
+                                                  trajectoryLength: max(5, config.trajectoryLength),
+                                                  completionHandler: nil)
+        request.objectMinimumNormalizedRadius = config.minimumNormalizedRadius
+        request.objectMaximumNormalizedRadius = config.maximumNormalizedRadius
+        request.targetFrameTime = config.frameDuration
+        return request
     }
 }
