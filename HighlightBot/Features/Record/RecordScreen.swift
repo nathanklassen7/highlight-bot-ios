@@ -10,6 +10,7 @@ struct RecordScreen: View {
 
     @State private var isDimmed = false
     @State private var recordingStartedAt: Date?
+    @State private var showTagPicker = false
 
     var body: some View {
         ZStack {
@@ -63,6 +64,15 @@ struct RecordScreen: View {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             container.saveCallout = nil
+        }
+        .sheet(isPresented: $showTagPicker) {
+            TagPickerSheet(
+                title: "Recording Tags",
+                initialSelection: container.tagPreferences.activeTags,
+                footnote: "New clips are tagged with these as they are saved."
+            ) { tags in
+                container.tagPreferences.activeTags = tags
+            }
         }
     }
 
@@ -129,6 +139,7 @@ struct RecordScreen: View {
             VStack(alignment: .leading, spacing: 8) {
                 bufferBar
                 clipSecondsPicker
+                activeTagsButton
             }
             Spacer()
             recordButton
@@ -141,6 +152,7 @@ struct RecordScreen: View {
     private var bottomControlsCompact: some View {
         VStack(alignment: .leading, spacing: 8) {
             clipSecondsPicker
+            activeTagsButton
             HStack(alignment: .bottom, spacing: 12) {
                 bufferBar
                 Spacer(minLength: 0)
@@ -253,6 +265,32 @@ struct RecordScreen: View {
             }
             .frame(maxWidth: 200)
         }
+    }
+
+    private var activeTagsButton: some View {
+        let activeTags = container.tagPreferences.activeTags
+        return Button {
+            showTagPicker = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "tag.fill")
+                if activeTags.isEmpty {
+                    Text("Tags")
+                } else {
+                    TagPillRow(tags: activeTags, limit: 2, size: .compact)
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.2), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: 220, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel("Recording tags")
+        .accessibilityValue(activeTags.isEmpty ? "None" : activeTags.joined(separator: ", "))
     }
 
     private var clipSecondsPicker: some View {

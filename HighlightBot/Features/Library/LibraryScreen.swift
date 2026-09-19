@@ -15,6 +15,10 @@ struct LibraryScreen: View {
     @State private var statusMessage: String?
     @State private var isSelecting = false
     @State private var selectedIDs: Set<UUID> = []
+    @State private var starredOnly = false
+    @State private var selectedTagFilters: [String] = []
+    @State private var editingTagsFor: ClipRecord?
+    @State private var showBulkTagPicker = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -37,10 +41,22 @@ struct LibraryScreen: View {
                                 .monospacedDigit()
                                 .frame(maxWidth: .infinity, alignment: .trailing)
 
-                            LazyVGrid(columns: columns, spacing: 12) {
-                                ForEach(clips) { clip in
-                                    let record = clip.record
-                                    clipCell(for: record)
+                            filterBar
+
+                            if filteredClips.isEmpty {
+                                ContentUnavailableView(
+                                    "No matching clips",
+                                    systemImage: "line.3.horizontal.decrease.circle",
+                                    description: Text("Try clearing a filter.")
+                                )
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 24)
+                            } else {
+                                LazyVGrid(columns: columns, spacing: 12) {
+                                    ForEach(filteredClips) { clip in
+                                        let record = clip.record
+                                        clipCell(for: record)
+                                    }
                                 }
                             }
                         }
@@ -53,6 +69,20 @@ struct LibraryScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
                 ClipPlayerScreen(record: record)
+            }
+            .sheet(item: $editingTagsFor) { record in
+                TagPickerSheet(title: "Edit Tags", initialSelection: record.tags) { tags in
+                    applyTags(tags, to: record)
+                }
+            }
+            .sheet(isPresented: $showBulkTagPicker) {
+                TagPickerSheet(
+                    title: "Add Tags",
+                    initialSelection: [],
+                    footnote: "Added to \(selectedIDs.count) selected clip(s). Existing tags are kept."
+                ) { tags in
+                    bulkAddTags(tags)
+                }
             }
             .confirmationDialog(
                 deleteDialogTitle,
@@ -93,12 +123,17 @@ struct LibraryScreen: View {
                 guard !Task.isCancelled else { return }
                 statusMessage = nil
             }
-            .onChange(of: clips.count) { _, _ in
+            .onChange(of: clipsRevision) { _, _ in
                 selectedIDs = selectedIDs.intersection(Set(clips.map(\.id)))
+                selectedTagFilters = selectedTagFilters.filter { tag in
+                    ClipTag.contains(availableFilterTags, tag)
+                }
                 if clips.isEmpty {
                     exitSelection()
                 }
             }
+            .onChange(of: starredOnly) { _, _ in pruneSelectionToVisible() }
+            .onChange(of: selectedTagFilters) { _, _ in pruneSelectionToVisible() }
             .onAppear { consumePendingLibraryClip() }
             .onChange(of: container.pendingLibraryClip) { _, _ in
                 consumePendingLibraryClip()
@@ -106,11 +141,110 @@ struct LibraryScreen: View {
         }
     }
 
+    // MARK: - Filtering
+
+    private var filteredClips: [Clip] {
+        clips.filter { clip in
+            (!starredOnly || clip.isStarred)
+                && (selectedTagFilters.isEmpty || clip.tags.contains { ClipTag.contains(selectedTagFilters, $0) })
+        }
+    }
+
+    private var availableFilterTags: [String] {
+        ClipTag.sortedForDisplay(ClipTag.merge([], clips.flatMap(\.tags)))
+    }
+
+    private var hasActiveFilters: Bool {
+        starredOnly || !selectedTagFilters.isEmpty
+    }
+
+    /// Bumps when clip count, tags, or starred state changes so selection and filters stay valid.
+    private var clipsRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(clips.count)
+        for clip in clips {
+            hasher.combine(clip.id)
+            hasher.combine(clip.tags)
+            hasher.combine(clip.isStarred)
+        }
+        return hasher.finalize()
+    }
+
+    @ViewBuilder
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button {
+                    starredOnly.toggle()
+                } label: {
+                    Label("Starred", systemImage: starredOnly ? "star.fill" : "star")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(starredOnly ? AppPalette.onFill : .primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            starredOnly ? Color.yellow : Color.secondary.opacity(0.15),
+                            in: Capsule()
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(starredOnly ? .isSelected : [])
+
+                ForEach(availableFilterTags, id: \.self) { tag in
+                    let selected = ClipTag.contains(selectedTagFilters, tag)
+                    Button {
+                        toggleTagFilter(tag)
+                    } label: {
+                        TagPill(tag: tag, size: .regular, isSelected: selected)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+
+                if hasActiveFilters {
+                    Button {
+                        starredOnly = false
+                        selectedTagFilters = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear filters")
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func pruneSelectionToVisible() {
+        guard isSelecting else { return }
+        selectedIDs = selectedIDs.intersection(Set(filteredClips.map(\.id)))
+    }
+
+    private func toggleTagFilter(_ tag: String) {
+        if ClipTag.contains(selectedTagFilters, tag) {
+            selectedTagFilters = ClipTag.removing(tag, from: selectedTagFilters)
+        } else {
+            selectedTagFilters = ClipTag.merge(selectedTagFilters, [tag])
+        }
+    }
+
+    // MARK: - Selection FABs
+
     private var hasSelection: Bool { !selectedIDs.isEmpty }
+
+    private var allSelectedStarred: Bool {
+        let selected = selectedClips
+        return !selected.isEmpty && selected.allSatisfy(\.isStarred)
+    }
 
     private var selectionFABStack: some View {
         VStack(spacing: 12) {
             if isSelecting {
+                bulkTagFAB
+                bulkStarFAB
                 shareFAB
                 deleteFAB
             }
@@ -131,6 +265,32 @@ struct LibraryScreen: View {
             .accessibilityLabel(isSelecting ? "Done" : "Select clips")
         }
         .animation(.easeInOut(duration: 0.2), value: isSelecting)
+    }
+
+    private var bulkTagFAB: some View {
+        Button {
+            showBulkTagPicker = true
+        } label: {
+            LibraryActionCircle(systemImage: "tag", tint: AppPalette.accent, enabled: hasSelection)
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSelection)
+        .accessibilityLabel("Add tags to selected clips")
+    }
+
+    private var bulkStarFAB: some View {
+        Button {
+            toggleBulkStar()
+        } label: {
+            LibraryActionCircle(
+                systemImage: allSelectedStarred ? "star.slash" : "star.fill",
+                tint: .yellow,
+                enabled: hasSelection
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSelection)
+        .accessibilityLabel(allSelectedStarred ? "Unstar selected clips" : "Star selected clips")
     }
 
     @ViewBuilder
@@ -161,6 +321,8 @@ struct LibraryScreen: View {
         .accessibilityLabel("Delete selected clips")
     }
 
+    // MARK: - Grid cells
+
     @ViewBuilder
     private func clipCell(for record: ClipRecord) -> some View {
         let selected = selectedIDs.contains(record.id)
@@ -174,10 +336,28 @@ struct LibraryScreen: View {
             ClipCell(record: record, isSelecting: isSelecting, isSelected: selected)
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            if !isSelecting {
+                starButton(for: record)
+            }
+        }
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityHint(isSelecting ? (selected ? "Deselect" : "Select") : "Plays the clip")
         .contextMenu {
             if !isSelecting {
+                Button {
+                    toggleStar(record)
+                } label: {
+                    Label(
+                        record.isStarred ? "Unstar" : "Star",
+                        systemImage: record.isStarred ? "star.slash" : "star"
+                    )
+                }
+                Button {
+                    editingTagsFor = record
+                } label: {
+                    Label("Edit Tags", systemImage: "tag")
+                }
                 ShareLink(item: record.fileURL) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -196,10 +376,26 @@ struct LibraryScreen: View {
         }
     }
 
+    private func starButton(for record: ClipRecord) -> some View {
+        Button {
+            toggleStar(record)
+        } label: {
+            Image(systemName: record.isStarred ? "star.fill" : "star")
+                .font(.title3)
+                .foregroundStyle(record.isStarred ? Color.yellow : Color.white)
+                .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                .padding(6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(record.isStarred ? "Unstar" : "Star")
+    }
+
     private var storageText: String {
-        let bytes = clips.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let bytes = filteredClips.reduce(Int64(0)) { $0 + $1.sizeBytes }
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        return "\(clips.count) clip\(clips.count == 1 ? "" : "s") · \(size)"
+        let count = filteredClips.count
+        return "\(count) clip\(count == 1 ? "" : "s") · \(size)"
     }
 
     private var selectedText: String {
@@ -209,9 +405,13 @@ struct LibraryScreen: View {
     }
 
     private var selectedRecords: [ClipRecord] {
-        clips.compactMap { clip in
-            selectedIDs.contains(clip.id) ? clip.record : nil
-        }
+        selectedClips.map(\.record)
+    }
+
+    /// Selection is pruned to visible clips whenever filters change, so every
+    /// bulk action (share, delete, star, tag) sees the same set.
+    private var selectedClips: [Clip] {
+        filteredClips.filter { selectedIDs.contains($0.id) }
     }
 
     private var deleteDialogTitle: String {
@@ -264,6 +464,62 @@ struct LibraryScreen: View {
         }
     }
 
+    private func toggleStar(_ record: ClipRecord) {
+        guard let clip = container.clipStore.clip(withID: record.id) else { return }
+        let newValue = !record.isStarred
+        do {
+            try container.clipStore.setStarred(clip, isStarred: newValue)
+            if container.lastClip?.id == record.id {
+                container.lastClip = clip.record
+            }
+            statusMessage = newValue ? "Starred" : "Unstarred"
+        } catch {
+            statusMessage = "Star failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func toggleBulkStar() {
+        let targets = selectedClips
+        guard !targets.isEmpty else { return }
+        let star = !allSelectedStarred
+        do {
+            try container.clipStore.setStarred(targets, isStarred: star)
+            if let lastID = container.lastClip?.id,
+               targets.contains(where: { $0.id == lastID }),
+               let updated = container.clipStore.clip(withID: lastID) {
+                container.lastClip = updated.record
+            }
+            statusMessage = star ? "Starred" : "Unstarred"
+        } catch {
+            statusMessage = "Star failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func applyTags(_ tags: [String], to record: ClipRecord) {
+        guard let clip = container.clipStore.clip(withID: record.id) else { return }
+        do {
+            try container.clipStore.updateTags(clip, tags: tags)
+            if container.lastClip?.id == record.id {
+                container.lastClip = clip.record
+            }
+            statusMessage = "Tags updated"
+        } catch {
+            statusMessage = "Tags failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func bulkAddTags(_ tags: [String]) {
+        let targets = selectedClips
+        guard !targets.isEmpty else { return }
+        do {
+            try container.clipStore.addTags(targets, tags: tags)
+            let count = targets.count
+            statusMessage = "Tagged \(count) clip\(count == 1 ? "" : "s")"
+        } catch {
+            statusMessage = "Tags failed: \(error.localizedDescription)"
+        }
+    }
+
     private func saveToPhotos(_ record: ClipRecord) async {
         do {
             try await PhotosSaver.save(record.fileURL, permissions: container.permissions)
@@ -308,6 +564,15 @@ struct ClipCell: View {
                             .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if isSelecting && record.isStarred {
+                        Image(systemName: "star.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.yellow)
+                            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+                            .padding(8)
+                    }
+                }
                 .overlay {
                     if isSelecting && isSelected {
                         RoundedRectangle(cornerRadius: 10)
@@ -326,6 +591,8 @@ struct ClipCell: View {
             }
             .font(.caption)
             .lineLimit(1)
+
+            TagPillRow(tags: record.tags, limit: 2)
         }
         .accessibilityElement(children: .combine)
     }

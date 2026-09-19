@@ -177,7 +177,25 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
     public let thumbnailFileName: String?  // relative, e.g. "...jpg"
     public let triggerSource: TriggerSourceID
     public let sizeBytes: Int64
-    public init(id:createdAt:duration:fileName:thumbnailFileName:triggerSource:sizeBytes:)
+    public let tags: [String]              // user tags, normalized via ClipTag; [] when absent from JSON
+    public let isStarred: Bool             // user favourite; false when absent from JSON
+    public init(id:createdAt:duration:fileName:thumbnailFileName:triggerSource:sizeBytes:tags:isStarred:)  // last two default
+    /// Copy with different user metadata; capture fields never change.
+    public func with(tags: [String]? = nil, isStarred: Bool? = nil) -> ClipRecord
+}
+
+/// Tag normalization and the canonical sport list. Tags are plain strings on ClipRecord.
+public enum ClipTag {
+    public static let suggestedSports: [String]   // "Hockey", "Soccer", ... always offered in the picker
+    public static let maxLength: Int              // 40
+    /// Trim, collapse whitespace, clip to maxLength, canonicalize sport casing ("hockey" -> "Hockey"). nil if empty.
+    public static func normalize(_ raw: String) -> String?
+    public static func isSuggestedSport(_ tag: String) -> Bool                 // case-insensitive
+    public static func merge(_ base: [String], _ additions: [String]) -> [String]  // case-insensitive union, first casing wins
+    public static func normalized(_ tags: [String]) -> [String]                // normalize + de-dupe
+    public static func sortedForDisplay(_ tags: [String]) -> [String]
+    public static func contains(_ tags: [String], _ tag: String) -> Bool        // case-insensitive
+    public static func removing(_ tag: String, from tags: [String]) -> [String]
 }
 
 public enum ClipNaming {
@@ -481,6 +499,8 @@ enum AppDirectories {
     var thumbnailFileName: String?
     var triggerSource: String
     var sizeBytes: Int64
+    var tags: [String] = []      // defaults let SwiftData migrate stores that predate the column
+    var isStarred: Bool = false
     init(record: ClipRecord)
     var record: ClipRecord { get }
     var fileURL: URL             // AppDirectories.clips.appending(path: fileName)
@@ -493,7 +513,27 @@ enum AppDirectories {
     func delete(_ clip: Clip) throws          // also removes files
     func deleteAll() throws
     func totalBytes() -> Int64
+    func newest() -> Clip?
+    func clip(withID: UUID) -> Clip?
+    func updateTags(_ clip: Clip, tags: [String]) throws        // replaces, normalized
+    func addTags(_ clips: [Clip], tags: [String]) throws        // bulk union
+    func setStarred(_ clip: Clip, isStarred: Bool) throws
+    func setStarred(_ clips: [Clip], isStarred: Bool) throws
+    func usedTags() -> [String]                                 // distinct tags on at least one clip
 }
+
+/// Tag lists that outlive clips, in UserDefaults. No Tag table: the clip list is small enough to scan.
+@MainActor @Observable final class TagPreferences {
+    var activeTags: [String]                 // chosen on Record; AppContainer stamps these onto every saved clip
+    private(set) var rememberedTags: [String] // every custom (non-sport) tag ever added, for the picker
+    func remember(_ tags: [String])
+    func previousTags(usedOnClips: [String]) -> [String]   // remembered ∪ used ∪ active, minus sports, sorted
+}
+
+/// Shared tag UI (HighlightBot/Features/Tags/). One picker for Record, Library, and Player.
+struct TagPill: View        // colored capsule; TagStyle.color(for:) gives each suggested sport a fixed color, all custom tags share one
+struct TagPillRow: View     // up to `limit` pills + "+N"
+struct TagPickerSheet: View // sports (always) → previous custom tags → create custom; onSave([String]) on Done
 
 /// DI container. Builds everything once; environment object for the app.
 @MainActor @Observable final class AppContainer {
@@ -505,6 +545,7 @@ enum AppDirectories {
     let coordinator: SessionCoordinator
     let pipeline: RecordingPipeline
     let clipStore: ClipStore
+    let tagPreferences: TagPreferences
     let modelContainer: ModelContainer
     var sessionState: SessionState
     var metrics: PipelineMetrics

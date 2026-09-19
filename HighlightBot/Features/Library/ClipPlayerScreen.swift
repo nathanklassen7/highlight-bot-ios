@@ -6,7 +6,7 @@ import UIKit
 /// Full-screen player for one clip with loop and slow-motion controls, plus
 /// Share / Save to Photos / Delete.
 struct ClipPlayerScreen: View {
-    let record: ClipRecord
+    @State private var record: ClipRecord
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
@@ -25,8 +25,13 @@ struct ClipPlayerScreen: View {
     @State private var isOverlayVisible = true
     @State private var overlayHideTask: Task<Void, Never>?
     @State private var timeObserver: Any?
+    @State private var showTagPicker = false
 
     private static let playbackRates: [Float] = [1.0, 0.5, 0.25, 0.15]
+
+    init(record: ClipRecord) {
+        _record = State(initialValue: record)
+    }
 
     var body: some View {
         ZStack {
@@ -94,6 +99,20 @@ struct ClipPlayerScreen: View {
         } message: {
             Text("The video file is removed from this device.")
         }
+        .sheet(isPresented: $showTagPicker) {
+            TagPickerSheet(title: "Edit Tags", initialSelection: record.tags) { tags in
+                applyTags(tags)
+            }
+        }
+        .onChange(of: showTagPicker) { _, isPresented in
+            if isPresented {
+                overlayHideTask?.cancel()
+                overlayHideTask = nil
+                isOverlayVisible = true
+            } else {
+                scheduleOverlayAutoHide()
+            }
+        }
         .overlay(alignment: .top) {
             if let statusMessage {
                 Text(statusMessage)
@@ -132,11 +151,46 @@ struct ClipPlayerScreen: View {
 
                     Spacer()
 
+                    Button {
+                        toggleStarred()
+                    } label: {
+                        Image(systemName: record.isStarred ? "star.fill" : "star")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(record.isStarred ? Color.yellow : Color.white)
+                            .padding(10)
+                            .background(.black.opacity(0.55), in: Circle())
+                    }
+                    .accessibilityLabel(record.isStarred ? "Unstar" : "Star")
+
                     Text(record.createdAt, format: .dateTime.month().day().hour().minute())
                         .font(.footnote.weight(.medium))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(.black.opacity(0.55), in: Capsule())
+                }
+                .foregroundStyle(.white)
+
+                HStack(spacing: 6) {
+                    TagPillRow(tags: record.tags, limit: 3, size: .compact)
+                    Button {
+                        showTagPicker = true
+                    } label: {
+                        Group {
+                            if record.tags.isEmpty {
+                                Label("Add tags", systemImage: "tag")
+                                    .labelStyle(.titleAndIcon)
+                            } else {
+                                Label("Edit", systemImage: "tag")
+                                    .labelStyle(.iconOnly)
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.black.opacity(0.55), in: Capsule())
+                    }
+                    .accessibilityLabel("Edit tags")
+                    Spacer(minLength: 0)
                 }
                 .foregroundStyle(.white)
                 .padding(.bottom, 16)
@@ -476,6 +530,37 @@ struct ClipPlayerScreen: View {
     }
 
     // MARK: - Actions
+
+    private func refreshRecord() {
+        if let clip = container.clipStore.clip(withID: record.id) {
+            record = clip.record
+            if container.lastClip?.id == record.id {
+                container.lastClip = record
+            }
+        }
+    }
+
+    private func toggleStarred() {
+        guard let clip = container.clipStore.clip(withID: record.id) else { return }
+        do {
+            try container.clipStore.setStarred(clip, isStarred: !record.isStarred)
+            refreshRecord()
+            statusMessage = record.isStarred ? "Starred" : "Unstarred"
+        } catch {
+            statusMessage = "Couldn't update: \(error.localizedDescription)"
+        }
+    }
+
+    private func applyTags(_ tags: [String]) {
+        guard let clip = container.clipStore.clip(withID: record.id) else { return }
+        do {
+            try container.clipStore.updateTags(clip, tags: tags)
+            refreshRecord()
+            statusMessage = "Tags updated"
+        } catch {
+            statusMessage = "Couldn't update: \(error.localizedDescription)"
+        }
+    }
 
     private func saveToPhotos() async {
         do {
