@@ -4,7 +4,7 @@ import SwiftData
 import os
 
 /// Main-actor facade over the SwiftData store for `Clip`. Deleting a clip also
-/// removes its media and thumbnail files.
+/// removes its media, thumbnail, and ball-track sidecar files.
 @MainActor
 final class ClipStore {
     private let context: ModelContext
@@ -62,7 +62,7 @@ final class ClipStore {
 
     private func removeFiles(for record: ClipRecord) {
         let fm = FileManager.default
-        var urls = [record.fileURL]
+        var urls = [record.fileURL, record.trackURL]
         if let thumb = record.thumbnailURL { urls.append(thumb) }
         for url in urls where fm.fileExists(atPath: url.path) {
             do {

@@ -18,6 +18,11 @@ enum AppDirectories {
         ensure(clips.appending(path: "Thumbnails", directoryHint: .isDirectory))
     }
 
+    /// Documents/Clips/Tracks — ball-track JSON sidecars, one per analysed clip.
+    static var tracks: URL {
+        ensure(clips.appending(path: "Tracks", directoryHint: .isDirectory))
+    }
+
     /// tmp/ring — fMP4 segments written by the ring buffer. Excluded from backup.
     static var ring: URL {
         let url = ensure(FileManager.default.temporaryDirectory.appending(path: "ring", directoryHint: .isDirectory))

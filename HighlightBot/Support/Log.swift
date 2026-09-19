@@ -14,6 +14,7 @@ enum Log {
     static let export = Logger(subsystem: subsystem, category: "export")
     static let session = Logger(subsystem: subsystem, category: "session")
     static let ui = Logger(subsystem: subsystem, category: "ui")
+    static let tracking = Logger(subsystem: subsystem, category: "tracking")
 }
 
 /// Signposters for Instruments. `capture` brackets every video data callback

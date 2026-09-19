@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00FCE730D897899335549BC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 12D7B3AA9DBD681B6CF42461 /* Assets.xcassets */; };
+		0423A9323BA233EBF3D7990E /* ClipTrackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D318293E439C3542794C8C66 /* ClipTrackStore.swift */; };
 		241834767E3EC217DB544259 /* SampleFanout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0842989F61DD17F77B974EBE /* SampleFanout.swift */; };
 		24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A2143011647568553306C /* FileReplayCaptureSource.swift */; };
 		2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BEEBD4CB3D63EDBA7BA8FC /* CaptureEngine.swift */; };
@@ -21,6 +22,7 @@
 		6F6CD203FCFE658E0D56787D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908459397F1630092D59F39E /* RootView.swift */; };
 		6F97595CD779A61F5825795D /* RecordScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6436EEF02F4EA492BFB30A2B /* RecordScreen.swift */; };
 		7ABF716DA06F964B75FF3377 /* FrameTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EF4F34576C4AA160173E3E7 /* FrameTap.swift */; };
+		80A855A2128230A64FE7EF7F /* ClipTrackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E436E279E30D0EEF1D5163 /* ClipTrackService.swift */; };
 		82E2683314B0DC9F5D5EF08F /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83EA040C70A9C59465323ED2 /* DebugOverlay.swift */; };
 		837DBDA0012AFE44A835D856 /* HighlightCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2A65D7B92D2754F701A86B4E /* HighlightCore */; };
 		859215D15F8EB6371FDE1638 /* PreviewLayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69648746A8204553FB069B8 /* PreviewLayerView.swift */; };
@@ -31,11 +33,14 @@
 		8E5357D04E9F07130096E969 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3C44C696CAAD0D675271F2 /* Log.swift */; };
 		94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */; };
 		9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */; };
+		A1A547864617E83EB81ACB3B /* BallTrackOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A550882D696DBFECBBCE90 /* BallTrackOverlay.swift */; };
 		A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C10A0DE01771B762EA06D28 /* AppContainer.swift */; };
 		AB0C00E2087227ACA9C7764E /* ThumbnailImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */; };
 		AD3FA4428B0AAE7D53031B41 /* ClipExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B7ECF9E04D501628E5901B /* ClipExporter.swift */; };
 		B311E8E0C6FC779AE20EB552 /* Clip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041D36D63A4B79DAFAB2DFB9 /* Clip.swift */; };
 		BC6D92A5E1A3AEE96B0CD69F /* RecordingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */; };
+		C7CDA327D77ED454ED56DF73 /* BallTracking in Frameworks */ = {isa = PBXBuildFile; productRef = 57B4B4C1AE4AE8BE82CCA5B4 /* BallTracking */; };
+		D740D77C73CDEBF245AD817F /* TrackingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 483239822C22CA4E3D5BC0F5 /* TrackingPreferences.swift */; };
 		DAABD631650541C9B16AC649 /* HardwareTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C4D350387DC0268C38D25 /* HardwareTrigger.swift */; };
 		E3BE23656C303D9D3F28103F /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B88028D23895EFBC35A9BA /* Haptics.swift */; };
 		FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8C1E328F17018C98480666 /* SettingsScreen.swift */; };
@@ -53,6 +58,7 @@
 		3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
 		3EF4F34576C4AA160173E3E7 /* FrameTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameTap.swift; sourceTree = "<group>"; };
 		44D86C565B7283A4733D16DE /* PhotosSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosSaver.swift; sourceTree = "<group>"; };
+		483239822C22CA4E3D5BC0F5 /* TrackingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingPreferences.swift; sourceTree = "<group>"; };
 		52B88028D23895EFBC35A9BA /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		56B7ECF9E04D501628E5901B /* ClipExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipExporter.swift; sourceTree = "<group>"; };
 		5B70E71D459FA79466779634 /* AppDirectories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDirectories.swift; sourceTree = "<group>"; };
@@ -60,6 +66,7 @@
 		6294A5C9A65CAC5A8EE46795 /* ThermalMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalMonitor.swift; sourceTree = "<group>"; };
 		6436EEF02F4EA492BFB30A2B /* RecordScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordScreen.swift; sourceTree = "<group>"; };
 		6D3C44C696CAAD0D675271F2 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
+		71E436E279E30D0EEF1D5163 /* ClipTrackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipTrackService.swift; sourceTree = "<group>"; };
 		7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		83EA040C70A9C59465323ED2 /* DebugOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlay.swift; sourceTree = "<group>"; };
 		908459397F1630092D59F39E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -72,7 +79,10 @@
 		B69648746A8204553FB069B8 /* PreviewLayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewLayerView.swift; sourceTree = "<group>"; };
 		BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSource.swift; sourceTree = "<group>"; };
 		BFF01A657AE8AFD210E933EC /* SegmentedRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedRecorder.swift; sourceTree = "<group>"; };
+		C1A550882D696DBFECBBCE90 /* BallTrackOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackOverlay.swift; sourceTree = "<group>"; };
+		D318293E439C3542794C8C66 /* ClipTrackStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipTrackStore.swift; sourceTree = "<group>"; };
 		D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImage.swift; sourceTree = "<group>"; };
+		E229E971C340C79E4CF0DCE1 /* BallTracking */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BallTracking; path = BallTracking; sourceTree = SOURCE_ROOT; };
 		EA14FB816379FF37F46C4D57 /* TapTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapTrigger.swift; sourceTree = "<group>"; };
 		F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPipeline.swift; sourceTree = "<group>"; };
 		F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightBotApp.swift; sourceTree = "<group>"; };
@@ -84,6 +94,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				837DBDA0012AFE44A835D856 /* HighlightCore in Frameworks */,
+				C7CDA327D77ED454ED56DF73 /* BallTracking in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -135,6 +146,7 @@
 				17A3DAEBE982E4DA6BF7BDF1 /* Features */,
 				F88089D4E1C87BAAB696BEC5 /* Resources */,
 				206CC2981B63010740B8177F /* Support */,
+				9759EB934A46E51E73213FAF /* Tracking */,
 				EBD672734B132DCC3FF3793F /* Triggers */,
 			);
 			path = HighlightBot;
@@ -186,6 +198,17 @@
 			);
 			sourceTree = "<group>";
 		};
+		9759EB934A46E51E73213FAF /* Tracking */ = {
+			isa = PBXGroup;
+			children = (
+				C1A550882D696DBFECBBCE90 /* BallTrackOverlay.swift */,
+				71E436E279E30D0EEF1D5163 /* ClipTrackService.swift */,
+				D318293E439C3542794C8C66 /* ClipTrackStore.swift */,
+				483239822C22CA4E3D5BC0F5 /* TrackingPreferences.swift */,
+			);
+			path = Tracking;
+			sourceTree = "<group>";
+		};
 		BDA3A8E5B0251551A2A9E70A /* Capture */ = {
 			isa = PBXGroup;
 			children = (
@@ -221,6 +244,7 @@
 		FB5C1480F003CB08A5BAE795 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				E229E971C340C79E4CF0DCE1 /* BallTracking */,
 				3823F8B9385515C059B6E381 /* HighlightCore */,
 			);
 			name = Packages;
@@ -244,6 +268,7 @@
 			name = HighlightBot;
 			packageProductDependencies = (
 				2A65D7B92D2754F701A86B4E /* HighlightCore */,
+				57B4B4C1AE4AE8BE82CCA5B4 /* BallTracking */,
 			);
 			productName = HighlightBot;
 			productReference = 34092EE4CA7A57B1A43FD5D9 /* HighlightBot.app */;
@@ -274,6 +299,7 @@
 			mainGroup = 8D51E8B63006086137115ABE;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				7F35DF006120AC4D04BFCBA9 /* XCLocalSwiftPackageReference "BallTracking" */,
 				0A7A4FF2C0A5E16D4D07A7FA /* XCLocalSwiftPackageReference "HighlightCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -304,12 +330,15 @@
 			files = (
 				A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */,
 				89B8CD7D19DBD999797D39F0 /* AppDirectories.swift in Sources */,
+				A1A547864617E83EB81ACB3B /* BallTrackOverlay.swift in Sources */,
 				2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */,
 				8C4EF4BFFFA49853ADCD43F7 /* CaptureSource.swift in Sources */,
 				B311E8E0C6FC779AE20EB552 /* Clip.swift in Sources */,
 				AD3FA4428B0AAE7D53031B41 /* ClipExporter.swift in Sources */,
 				94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */,
 				5430C4DE37375E41B11C93A6 /* ClipStore.swift in Sources */,
+				80A855A2128230A64FE7EF7F /* ClipTrackService.swift in Sources */,
+				0423A9323BA233EBF3D7990E /* ClipTrackStore.swift in Sources */,
 				82E2683314B0DC9F5D5EF08F /* DebugOverlay.swift in Sources */,
 				24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */,
 				7ABF716DA06F964B75FF3377 /* FrameTap.swift in Sources */,
@@ -332,6 +361,7 @@
 				4185208EFB18B1143896FD0A /* TapTrigger.swift in Sources */,
 				571535839C8EEE4CF16B6DCB /* ThermalMonitor.swift in Sources */,
 				AB0C00E2087227ACA9C7764E /* ThumbnailImage.swift in Sources */,
+				D740D77C73CDEBF245AD817F /* TrackingPreferences.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -539,12 +569,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = HighlightCore;
 		};
+		7F35DF006120AC4D04BFCBA9 /* XCLocalSwiftPackageReference "BallTracking" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = BallTracking;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		2A65D7B92D2754F701A86B4E /* HighlightCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HighlightCore;
+		};
+		57B4B4C1AE4AE8BE82CCA5B4 /* BallTracking */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BallTracking;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

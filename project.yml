@@ -17,6 +17,8 @@ configs:
 packages:
   HighlightCore:
     path: HighlightCore
+  BallTracking:
+    path: BallTracking
 
 # Project-level defaults; the target repeats the ones that matter.
 settings:
@@ -35,6 +37,7 @@ targets:
           - "Resources/README.md"
     dependencies:
       - package: HighlightCore
+      - package: BallTracking
     info:
       path: HighlightBot/Info.plist
       properties:

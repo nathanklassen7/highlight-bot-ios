@@ -1,3 +1,4 @@
+import BallTracking
 import HighlightCore
 import SwiftUI
 
@@ -38,6 +39,7 @@ struct SettingsScreen: View {
 
     var body: some View {
         @Bindable var settings = container.settings
+        @Bindable var tracking = container.trackingPreferences
         let isRecording = container.sessionState.isRecording
 
         NavigationStack {
@@ -104,6 +106,11 @@ struct SettingsScreen: View {
 
                 Section("Debug") {
                     Toggle("Show pipeline metrics", isOn: $settings.config.debugOverlayEnabled)
+                    Picker("Ball detector", selection: $tracking.detectorKind) {
+                        ForEach(BallDetectorKind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
                     Button("Reset settings to defaults") {
                         settings.reset()
                     }

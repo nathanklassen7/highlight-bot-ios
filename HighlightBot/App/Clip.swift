@@ -71,4 +71,10 @@ extension ClipRecord {
         }
         return inClips
     }
+
+    /// Absolute URL of the ball-track sidecar (`AppDirectories.tracks/<baseName>.track.json`).
+    var trackURL: URL {
+        let baseName = (fileName as NSString).deletingPathExtension
+        return AppDirectories.tracks.appending(path: baseName + ".track.json")
+    }
 }

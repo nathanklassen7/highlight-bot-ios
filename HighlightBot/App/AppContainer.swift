@@ -71,6 +71,8 @@ final class AppContainer {
     let coordinator: SessionCoordinator
     let pipeline: RecordingPipeline
     let clipStore: ClipStore
+    let trackingPreferences: TrackingPreferences
+    let clipTracks: ClipTrackService
     let modelContainer: ModelContainer
     /// Kept so config changes can update the eviction policy directly.
     let ringBuffer: SegmentRingBuffer
@@ -111,6 +113,10 @@ final class AppContainer {
         let modelContainer = Self.makeModelContainer()
         self.modelContainer = modelContainer
         clipStore = ClipStore(container: modelContainer)
+
+        let trackingPreferences = TrackingPreferences()
+        self.trackingPreferences = trackingPreferences
+        clipTracks = ClipTrackService(preferences: trackingPreferences)
 
         triggerBus = TriggerBus()
         tapTrigger = TapTrigger()
