@@ -31,6 +31,8 @@ public struct MotionMask: Sendable {
 
     /// Full-range luma of the most recent frame, same layout as `pixels`.
     public var currentLuma: [UInt8] { current }
+    /// Full-range luma of the frame before it. Meaningless while `hasMask` is false.
+    public var previousLuma: [UInt8] { previous }
 
     private var current: [UInt8] = []
     private var previous: [UInt8] = []
@@ -79,6 +81,9 @@ public struct MotionMask: Sendable {
         let stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
         let isFullRange = Self.isFullRange(CVPixelBufferGetPixelFormatType(pixelBuffer))
 
+        // The last frame becomes `previous`; the new one overwrites the older buffer.
+        if hasPrevious { swap(&current, &previous) }
+
         var src = vImage_Buffer(data: base, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: stride)
         let copyError: vImage_Error = current.withUnsafeMutableBufferPointer { dst in
             var dstBuffer = vImage_Buffer(data: dst.baseAddress, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w)
@@ -94,11 +99,8 @@ public struct MotionMask: Sendable {
             return false
         }
 
-        defer {
-            swap(&current, &previous)
-            hasPrevious = true
-        }
         guard hasPrevious else {
+            hasPrevious = true
             hasMask = false
             return false
         }

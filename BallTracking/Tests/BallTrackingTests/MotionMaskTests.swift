@@ -100,6 +100,21 @@ struct MotionMaskTests {
         #expect(onPixels(above) == dilated(footprint(disc)))
     }
 
+    @Test("currentLuma and previousLuma expose the two frames in full range")
+    func lumaPlanes() {
+        var mask = MotionMask()
+        mask.update(pixelBuffer: SyntheticFrames.make420v(width: width, height: height, background: 40,
+                                                          discs: [.init(center: CGPoint(x: 100, y: 180), radius: 4, luma: 230)]))
+        mask.update(pixelBuffer: SyntheticFrames.make420v(width: width, height: height, background: 40,
+                                                          discs: [.init(center: CGPoint(x: 116, y: 176), radius: 4, luma: 230)]))
+        let expanded230 = UInt8(((230.0 - 16) * 255 / 219).rounded())
+        let expanded40 = UInt8(((40.0 - 16) * 255 / 219).rounded())
+        #expect(mask.currentLuma[176 * width + 116] == expanded230)
+        #expect(mask.currentLuma[180 * width + 100] == expanded40)
+        #expect(mask.previousLuma[180 * width + 100] == expanded230)
+        #expect(mask.previousLuma[176 * width + 116] == expanded40)
+    }
+
     @Test("reset forgets the previous frame")
     func resetForgets() {
         var mask = MotionMask()
