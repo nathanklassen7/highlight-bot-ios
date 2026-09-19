@@ -65,6 +65,13 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     /// Buffer lengths offered in the UI picker, in seconds.
     public static let bufferOptions: [TimeInterval] = [10, 20, 30, 60]
 
+    /// Frame rates offered in the UI picker. 120 fps is 720p-only; the
+    /// settings screen drops resolution when this rate is selected.
+    public static let frameRateOptions: [Int] = [30, 60, 120]
+
+    /// Highest frame rate offered at 1080p. 120 fps is captured at 720p.
+    public static let maxFrameRateFor1080p = 60
+
     /// Number of media segments needed to cover `bufferSeconds`, rounded up.
     /// Returns 0 when `segmentInterval` is invalid.
     public var segmentsPerBuffer: Int {

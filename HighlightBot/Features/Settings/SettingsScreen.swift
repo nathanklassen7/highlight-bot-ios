@@ -10,7 +10,6 @@ struct SettingsScreen: View {
     @State private var statusMessage: String?
 
     private static let inactivityMinutes: [Int] = [15, 30, 45, 60, 120]
-    private static let frameRates: [Int] = [30, 60]
 
     /// Preset capture resolutions exposed in the picker.
     private enum Resolution: String, CaseIterable, Identifiable {
@@ -68,7 +67,7 @@ struct SettingsScreen: View {
                         }
                     }
                     Picker("Frame rate", selection: $settings.config.frameRate) {
-                        ForEach(Self.frameRates, id: \.self) { fps in
+                        ForEach(RecordingConfig.frameRateOptions, id: \.self) { fps in
                             Text("\(fps) fps").tag(fps)
                         }
                     }
@@ -84,7 +83,7 @@ struct SettingsScreen: View {
                     if isRecording {
                         Text("Capture settings apply the next time recording starts.")
                     } else {
-                        Text("H.264 shares everywhere; HEVC makes smaller files.")
+                        Text("120 fps captures at 720p. H.264 shares everywhere; HEVC makes smaller files.")
                     }
                 }
 
@@ -108,8 +107,7 @@ struct SettingsScreen: View {
                     LabeledContent("Minimum iOS", value: "17.2")
                 }
             }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .confirmationDialog(
                 "Delete all clips?",
                 isPresented: $showDeleteAllConfirm,
@@ -139,10 +137,21 @@ struct SettingsScreen: View {
             }
             .onAppear { refreshStorage() }
             .onChange(of: container.lastClip) { _, _ in refreshStorage() }
+            .onChange(of: settings.config.frameRate) { _, fps in
+                if fps > RecordingConfig.maxFrameRateFor1080p {
+                    let size = Resolution.p720.size
+                    settings.config.width = size.width
+                    settings.config.height = size.height
+                }
+            }
             .onChange(of: settings.config.width) { _, width in
-                let height = Resolution(width: width, height: settings.config.height).size.height
-                if settings.config.height != height {
-                    settings.config.height = height
+                let resolution = Resolution(width: width, height: settings.config.height)
+                let size = resolution.size
+                if settings.config.height != size.height {
+                    settings.config.height = size.height
+                }
+                if resolution == .p1080, settings.config.frameRate > RecordingConfig.maxFrameRateFor1080p {
+                    settings.config.frameRate = RecordingConfig.maxFrameRateFor1080p
                 }
             }
         }

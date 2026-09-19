@@ -426,8 +426,10 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         }
         guard target != current else { return }
         Log.session.notice("Thermal state \(thermalState.rawValue): frame rate \(current) → \(target)")
+        // Success emits `.formatChanged`, which updates `currentFrameRate`.
+        // High-fps slo-mo formats are sometimes locked to 120/240; `setFrameRate`
+        // is then a no-op and metrics keep reporting the real rate.
         await source.setFrameRate(target)
-        state.withLock { $0.currentFrameRate = target }
     }
 
     private func collectMetrics() async -> PipelineMetrics {

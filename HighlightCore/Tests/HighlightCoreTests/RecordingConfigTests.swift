@@ -19,12 +19,15 @@ struct RecordingConfigTests {
         #expect(config.minimumFreeBytes == 500 * 1024 * 1024)
         #expect(config.debugOverlayEnabled == false)
         #expect(RecordingConfig.bufferOptions == [10, 20, 30, 60])
+        #expect(RecordingConfig.frameRateOptions == [30, 60, 120])
+        #expect(RecordingConfig.maxFrameRateFor1080p == 60)
         #expect(RecordingConfig() == config)
     }
 
     @Test("default config validates clean")
     func defaultIsValid() {
         #expect(RecordingConfig.default.validate().isEmpty)
+        #expect(RecordingConfig(width: 1280, height: 720, frameRate: 120).validate().isEmpty)
     }
 
     @Test("segmentsPerBuffer rounds up and retainSeconds adds one interval")

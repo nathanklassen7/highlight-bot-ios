@@ -398,9 +398,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
 
     /// Picks the format closest to `config`: exact dimensions first, then 420v
     /// pixel format, then a frame-rate range covering the requested fps.
-    /// Among equals, prefer unbinned formats and the lowest max frame rate
-    /// that still satisfies the request (high-fps slo-mo formats often disable
-    /// features like stabilisation).
+    /// Among equals, prefer formats that can also run at 30 fps (so thermal
+    /// downgrade does not need a session reconfigure), then unbinned formats,
+    /// then the lowest max frame rate that still satisfies the request
+    /// (high-fps slo-mo formats often disable features like stabilisation).
     private static func chooseFormat(for device: AVCaptureDevice, config: RecordingConfig) -> FormatChoice? {
         let wanted = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         let wantedArea = config.width * config.height
@@ -431,6 +432,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             }
             if pixelMatch { score += 100_000 }
             if fpsOK { score += 10_000 }
+            // 120/240 formats are often locked to that rate; thermal drops to 30
+            // in place, so a range that still includes 30 is worth more than
+            // staying unbinned on a locked slo-mo format.
+            if formatSupports(format, fps: min(30, config.frameRate)) { score += 2_000 }
             if !format.isVideoBinned { score += 1_000 }
             // Prefer the lowest max fps that still covers the request.
             score -= min(maxFPS, 999)

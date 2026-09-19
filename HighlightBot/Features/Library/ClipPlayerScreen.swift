@@ -10,15 +10,25 @@ struct ClipPlayerScreen: View {
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    private var portraitGutter: CGFloat {
+        verticalSizeClass == .regular ? 8 : 0
+    }
 
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
     @State private var isLooping = true
     @State private var rate: Float = 1.0
+    @State private var isSpeedMenuExpanded = false
     @State private var showDeleteConfirm = false
     @State private var statusMessage: String?
+    @State private var currentTime: Double = 0
+    @State private var duration: Double = 0
+    @State private var isScrubbing = false
+    @State private var timeObserver: Any?
 
-    private static let rates: [Float] = [0.25, 0.5, 1.0]
+    private static let slowMotionRates: [Float] = [0.5, 0.25, 0.15]
 
     var body: some View {
         ZStack {
@@ -52,14 +62,19 @@ struct ClipPlayerScreen: View {
 
                 Spacer()
 
-                bottomBar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                VStack(spacing: 10) {
+                    scrubber
+                    bottomBar
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
+            .padding(.horizontal, portraitGutter)
         }
         .statusBarHidden(true)
         .onAppear { startPlayback() }
         .onDisappear {
+            removeTimeObserver()
             player.pause()
             looper?.disableLooping()
             looper = nil
@@ -90,6 +105,39 @@ struct ClipPlayerScreen: View {
         }
     }
 
+    private var scrubber: some View {
+        VStack(spacing: 4) {
+            Slider(
+                value: Binding(
+                    get: { currentTime },
+                    set: { seek(to: $0, preview: true) }
+                ),
+                in: 0...scrubDuration
+            ) { editing in
+                isScrubbing = editing
+                if editing {
+                    player.pause()
+                } else {
+                    seek(to: currentTime, preview: false)
+                    player.rate = rate
+                }
+            }
+            .tint(.white)
+            .accessibilityLabel("Playback position")
+
+            HStack {
+                Text(timeText(currentTime))
+                Spacer()
+                Text(timeText(scrubDuration))
+            }
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.85))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.black.opacity(0.55), in: Capsule())
+    }
+
     private var bottomBar: some View {
         HStack(spacing: 12) {
             Button {
@@ -99,13 +147,7 @@ struct ClipPlayerScreen: View {
                 Label("Loop", systemImage: isLooping ? "repeat.circle.fill" : "repeat.circle")
             }
 
-            Button {
-                cycleRate()
-            } label: {
-                Label(rateLabel, systemImage: "tortoise.fill")
-                    .monospacedDigit()
-            }
-            .accessibilityLabel("Playback speed \(rateLabel)")
+            speedControl
 
             Spacer()
 
@@ -131,21 +173,62 @@ struct ClipPlayerScreen: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.black.opacity(0.55), in: Capsule())
+        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
     }
 
-    private var rateLabel: String {
-        switch rate {
-        case 0.25: "0.25×"
-        case 0.5: "0.5×"
-        default: "1×"
+    private var speedControl: some View {
+        HStack(spacing: 10) {
+            Button {
+                isSpeedMenuExpanded.toggle()
+            } label: {
+                Image(systemName: "tortoise.fill")
+            }
+            .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
+            .accessibilityValue(percentLabel(for: rate))
+
+            if !isSpeedMenuExpanded, !Self.slowMotionRates.contains(rate) {
+                Text(percentLabel(for: rate))
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+
+            ForEach(Self.slowMotionRates, id: \.self) { option in
+                let isSelected = option == rate
+                let isVisible = isSpeedMenuExpanded || isSelected
+                Button {
+                    applyRate(option)
+                } label: {
+                    Text(percentLabel(for: option))
+                        .font(.footnote.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(isSelected && isSpeedMenuExpanded ? Color.yellow : Color.white)
+                }
+                .opacity(isVisible ? 1 : 0)
+                .frame(width: isVisible ? nil : 0, alignment: .leading)
+                .clipped()
+                .allowsHitTesting(isVisible)
+                .accessibilityHidden(!isVisible)
+                .accessibilityLabel("Playback speed \(percentLabel(for: option))")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
         }
+    }
+
+    private func percentLabel(for rate: Float) -> String {
+        "\(Int((rate * 100).rounded()))%"
+    }
+
+    private var scrubDuration: Double {
+        let value = duration > 0 ? duration : record.duration
+        return max(value, 0.01)
     }
 
     // MARK: - Playback
 
     private func startPlayback() {
+        duration = record.duration
         player.actionAtItemEnd = .advance
         applyLooping()
+        addTimeObserver()
     }
 
     /// Rebuilds the queue: an `AVPlayerLooper` when looping, a single item otherwise.
@@ -162,12 +245,51 @@ struct ClipPlayerScreen: View {
         player.rate = rate
     }
 
-    private func cycleRate() {
-        let index = Self.rates.firstIndex(of: rate) ?? (Self.rates.count - 1)
-        rate = Self.rates[(index + 1) % Self.rates.count]
+    private func applyRate(_ newRate: Float) {
+        rate = newRate
         // VERIFY: setting `rate` directly resumes playback at that speed; slow rates
         // require `AVPlayerItem.canPlaySlowForward`, which is true for local MP4s.
         player.rate = rate
+    }
+
+    private func addTimeObserver() {
+        removeTimeObserver()
+        let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            guard !isScrubbing else { return }
+            currentTime = seconds(from: time)
+            if let itemDuration = player.currentItem?.duration {
+                let value = seconds(from: itemDuration)
+                if value > 0 { duration = value }
+            }
+        }
+    }
+
+    private func removeTimeObserver() {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+    }
+
+    private func seek(to seconds: Double, preview: Bool) {
+        currentTime = min(max(seconds, 0), scrubDuration)
+        let time = CMTime(seconds: currentTime, preferredTimescale: 600)
+        player.seek(
+            to: time,
+            toleranceBefore: preview ? CMTime(seconds: 0.1, preferredTimescale: 600) : .zero,
+            toleranceAfter: preview ? CMTime(seconds: 0.1, preferredTimescale: 600) : .zero
+        )
+    }
+
+    private func seconds(from time: CMTime) -> Double {
+        guard time.isNumeric else { return 0 }
+        let value = time.seconds
+        return value.isFinite ? value : 0
+    }
+
+    private func timeText(_ seconds: Double) -> String {
+        Duration.seconds(max(0, seconds)).formatted(.time(pattern: .minuteSecond))
     }
 
     // MARK: - Actions

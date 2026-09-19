@@ -26,47 +26,47 @@ struct LibraryScreen: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(clips) { clip in
-                                let record = clip.record
-                                Button {
-                                    playerRecord = record
-                                } label: {
-                                    ClipCell(record: record)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    ShareLink(item: record.fileURL) {
-                                        Label("Share", systemImage: "square.and.arrow.up")
-                                    }
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(storageText)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+
+                            LazyVGrid(columns: columns, spacing: 12) {
+                                ForEach(clips) { clip in
+                                    let record = clip.record
                                     Button {
-                                        Task { await saveToPhotos(record) }
+                                        playerRecord = record
                                     } label: {
-                                        Label("Save to Photos", systemImage: "photo.badge.plus")
+                                        ClipCell(record: record)
                                     }
-                                    Button(role: .destructive) {
-                                        pendingDelete = record
-                                        showDeleteConfirm = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        ShareLink(item: record.fileURL) {
+                                            Label("Share", systemImage: "square.and.arrow.up")
+                                        }
+                                        Button {
+                                            Task { await saveToPhotos(record) }
+                                        } label: {
+                                            Label("Save to Photos", systemImage: "photo.badge.plus")
+                                        }
+                                        Button(role: .destructive) {
+                                            pendingDelete = record
+                                            showDeleteConfirm = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
                         }
-                        .padding(12)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
                 }
             }
-            .navigationTitle("Library")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Text(storageText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
                 ClipPlayerScreen(record: record)
             }

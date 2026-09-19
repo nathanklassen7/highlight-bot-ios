@@ -60,7 +60,6 @@ struct RecordScreen: View {
             guard !Task.isCancelled else { return }
             container.errorMessage = nil
         }
-        .statusBarHidden(true)
     }
 
     // MARK: - Capture stack
@@ -134,13 +133,14 @@ struct RecordScreen: View {
                     Text("Starting…")
                 }
             case .recording:
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 12, height: 12)
-                    Text("REC")
-                        .fontWeight(.bold)
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                TimelineView(.periodic(from: recordingStartedAt ?? .now, by: 0.5)) { context in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 12, height: 12)
+                            .opacity(recDotLit(at: context.date) ? 1 : 0)
+                        Text("REC")
+                            .fontWeight(.bold)
                         Text(elapsedText(at: context.date))
                             .monospacedDigit()
                     }
@@ -300,6 +300,12 @@ struct RecordScreen: View {
             return pending
         }
         return 0
+    }
+
+    private func recDotLit(at date: Date) -> Bool {
+        guard let start = recordingStartedAt else { return true }
+        let elapsed = max(0, date.timeIntervalSince(start))
+        return Int(elapsed / 0.5) % 2 == 0
     }
 
     private func elapsedText(at date: Date) -> String {
