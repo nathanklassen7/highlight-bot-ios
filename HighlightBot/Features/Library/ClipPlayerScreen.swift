@@ -10,11 +10,6 @@ struct ClipPlayerScreen: View {
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-
-    private var portraitGutter: CGFloat {
-        verticalSizeClass == .regular ? 8 : 0
-    }
 
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
@@ -28,7 +23,7 @@ struct ClipPlayerScreen: View {
     @State private var isScrubbing = false
     @State private var timeObserver: Any?
 
-    private static let slowMotionRates: [Float] = [0.5, 0.25, 0.15]
+    private static let playbackRates: [Float] = [1.0, 0.5, 0.25, 0.15]
 
     var body: some View {
         ZStack {
@@ -58,7 +53,7 @@ struct ClipPlayerScreen: View {
                         .background(.black.opacity(0.55), in: Capsule())
                 }
                 .foregroundStyle(.white)
-                .padding(16)
+                .padding(.bottom, 16)
 
                 Spacer()
 
@@ -66,10 +61,9 @@ struct ClipPlayerScreen: View {
                     scrubber
                     bottomBar
                 }
-                .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             }
-            .padding(.horizontal, portraitGutter)
+            .screenPadding(.horizontal)
         }
         .statusBarHidden(true)
         .onAppear { startPlayback() }
@@ -173,7 +167,6 @@ struct ClipPlayerScreen: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.black.opacity(0.55), in: Capsule())
-        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
     }
 
     private var speedControl: some View {
@@ -186,24 +179,25 @@ struct ClipPlayerScreen: View {
             .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
             .accessibilityValue(percentLabel(for: rate))
 
-            if !isSpeedMenuExpanded, !Self.slowMotionRates.contains(rate) {
-                Text(percentLabel(for: rate))
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-            }
-
-            ForEach(Self.slowMotionRates, id: \.self) { option in
+            ForEach(Self.playbackRates, id: \.self) { option in
                 let isSelected = option == rate
                 let isVisible = isSpeedMenuExpanded || isSelected
                 Button {
-                    applyRate(option)
+                    if isSpeedMenuExpanded {
+                        applyRate(option)
+                    } else {
+                        isSpeedMenuExpanded = true
+                    }
                 } label: {
                     Text(percentLabel(for: option))
                         .font(.footnote.weight(.semibold).monospacedDigit())
                         .foregroundStyle(isSelected && isSpeedMenuExpanded ? Color.yellow : Color.white)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .transaction { $0.animation = nil }
                 }
                 .opacity(isVisible ? 1 : 0)
-                .frame(width: isVisible ? nil : 0, alignment: .leading)
+                .frame(maxWidth: isVisible ? nil : 0, alignment: .leading)
                 .clipped()
                 .allowsHitTesting(isVisible)
                 .accessibilityHidden(!isVisible)
@@ -211,6 +205,8 @@ struct ClipPlayerScreen: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
     }
 
     private func percentLabel(for rate: Float) -> String {

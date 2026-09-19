@@ -107,6 +107,7 @@ struct SettingsScreen: View {
                     LabeledContent("Minimum iOS", value: "17.2")
                 }
             }
+            .screenPadding()
             .toolbar(.hidden, for: .navigationBar)
             .confirmationDialog(
                 "Delete all clips?",

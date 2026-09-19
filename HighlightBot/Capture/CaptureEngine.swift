@@ -111,7 +111,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
         rotationCoordinator = coordinator
         applyPreviewRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
-        let initialCapture = coordinator.videoRotationAngleForHorizonLevelCapture
+        let initialCapture = Self.landscapeAngle(coordinator.videoRotationAngleForHorizonLevelCapture)
         rotation.withLock { $0 = initialCapture }
         rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coordinator, _ in
             let preview = coordinator.videoRotationAngleForHorizonLevelPreview
@@ -119,16 +119,32 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.applyPreviewRotation(preview)
-                self.rotation.withLock { $0 = capture }
+                self.rotation.withLock { current in
+                    current = Self.landscapeAngle(capture, last: current)
+                }
             }
         }
     }
 
     @MainActor
     private func applyPreviewRotation(_ angle: CGFloat) {
+        let landscape = rotation.withLock { current in
+            let snapped = Self.landscapeAngle(angle, last: current)
+            return snapped
+        }
         guard let connection = previewLayer?.connection,
-              connection.isVideoRotationAngleSupported(angle) else { return }
-        connection.videoRotationAngle = angle
+              connection.isVideoRotationAngleSupported(landscape) else { return }
+        connection.videoRotationAngle = landscape
+    }
+
+    /// Clips are landscape-only. Portrait device tilts (90°/270°) must not be
+    /// written into the file transform; keep the last landscape heading instead.
+    private static func landscapeAngle(_ angle: CGFloat, last: CGFloat = 0) -> CGFloat {
+        var a = angle.truncatingRemainder(dividingBy: 360)
+        if a < 0 { a += 360 }
+        if a < 45 || a >= 315 { return 0 }
+        if a >= 135 && a < 225 { return 180 }
+        return last == 180 ? 180 : 0
     }
 
     func setConsumer(_ consumer: (any SampleConsumer)?) {

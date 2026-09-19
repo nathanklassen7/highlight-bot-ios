@@ -40,7 +40,9 @@ struct RecordScreen: View {
             }
             if !newState.isRecording {
                 recordingStartedAt = nil
-                isDimmed = false
+                if newState != .starting {
+                    isDimmed = false
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -60,6 +62,12 @@ struct RecordScreen: View {
             guard !Task.isCancelled else { return }
             container.errorMessage = nil
         }
+        .task(id: container.saveCallout) {
+            guard container.saveCallout != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            container.saveCallout = nil
+        }
     }
 
     // MARK: - Capture stack
@@ -75,11 +83,11 @@ struct RecordScreen: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
 
-            controlsOverlay
-
             if isDimmed {
-                DimmedModeView()
+                DimmedModeView(isRecording: container.sessionState.isRecording)
             }
+
+            controlsOverlay
         }
         .contentShape(Rectangle())
         .onTapGesture { handleTap() }
@@ -91,32 +99,35 @@ struct RecordScreen: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     statusIndicator
-                    if container.settings.config.debugOverlayEnabled {
+                    if !isDimmed && container.settings.config.debugOverlayEnabled {
                         DebugOverlay(metrics: container.metrics)
                     }
                 }
                 Spacer()
-                if pendingSaves > 0 {
-                    SavingBadge(count: pendingSaves)
+                saveStatusBadge
+                if !isDimmed {
+                    dimButton
                 }
-                dimButton
             }
 
             Spacer()
 
-            HStack(alignment: .bottom, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    bufferBar
-                    clipSecondsPicker
+            if !isDimmed {
+                HStack(alignment: .bottom, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        bufferBar
+                        clipSecondsPicker
+                    }
+                    Spacer()
+                    recordButton
+                    Spacer()
+                    lastClipButton
+                        .frame(width: 112, alignment: .trailing)
                 }
-                Spacer()
-                recordButton
-                Spacer()
-                lastClipButton
-                    .frame(width: 112, alignment: .trailing)
             }
         }
         .padding(16)
+        .allowsHitTesting(!isDimmed)
     }
 
     // MARK: - Overlay pieces
@@ -265,7 +276,7 @@ struct RecordScreen: View {
     private func handleTap() {
         if container.sessionState.isRecording {
             container.tapTrigger.fireSave()
-        } else if container.sessionState == .idle && !isDimmed {
+        } else if container.sessionState == .idle {
             container.toggleRecording()
         }
     }
@@ -352,19 +363,26 @@ private struct ErrorBanner: View {
     }
 }
 
-/// Opaque black overlay for long sessions. Taps still save; long-press wakes.
+/// Opaque black overlay for long sessions. Taps still save or start; long-press wakes.
 private struct DimmedModeView: View {
+    let isRecording: Bool
+
     var body: some View {
+        let tapHint = isRecording ? "Tap to save" : "Tap to start"
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 4) {
                 Text("Screen dimmed")
-                Text("Tap to save · Hold to wake")
+                Text("\(tapHint) · Hold to wake")
             }
             .font(.caption2)
             .foregroundStyle(.white.opacity(0.25))
         }
-        .accessibilityLabel("Screen dimmed. Tap to save a clip, hold to wake.")
+        .accessibilityLabel(
+            isRecording
+                ? "Screen dimmed. Tap to save a clip, hold to wake."
+                : "Screen dimmed. Tap to start, hold to wake."
+        )
     }
 }
 

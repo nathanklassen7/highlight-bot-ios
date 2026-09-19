@@ -17,6 +17,12 @@ enum AppError: Error, LocalizedError {
     }
 }
 
+/// Shown in the Record save pill after in-flight saves drain.
+enum SaveCallout: Equatable {
+    case saved
+    case failed
+}
+
 /// Breaks the construction cycle between `SessionCoordinator` (needs a backend)
 /// and `RecordingPipeline` (needs the coordinator). The coordinator is created
 /// with this proxy; `target` is set once the pipeline exists.
@@ -81,8 +87,13 @@ final class AppContainer {
     var lastClip: ClipRecord?
     /// Transient, user-facing error text. Views clear it after showing it.
     var errorMessage: String?
+    /// Outcome shown in the Record save pill after in-flight saves drain.
+    var saveCallout: SaveCallout?
     /// Mirror of `coordinator.selectedClipSeconds` for the UI picker.
     var selectedClipSeconds: TimeInterval
+
+    @ObservationIgnored private var saveBatchSucceeded = false
+    @ObservationIgnored private var saveBatchFailed = false
 
     @ObservationIgnored private let backendProxy: BackendProxy
     @ObservationIgnored private var started = false
@@ -229,8 +240,13 @@ final class AppContainer {
                 Haptics.toggled()
             }
             sessionState = state
+            if Self.pendingSaves(in: state) > 0 {
+                saveCallout = nil
+            }
+            publishSaveCalloutIfIdle()
 
         case .clipSaved(let record):
+            saveBatchSucceeded = true
             do {
                 try clipStore.insert(record)
             } catch {
@@ -239,10 +255,13 @@ final class AppContainer {
             }
             lastClip = record
             Haptics.saved()
+            publishSaveCalloutIfIdle()
 
         case .saveFailed(let reason):
+            saveBatchFailed = true
             errorMessage = "Save failed: \(reason)"
             Haptics.error()
+            publishSaveCalloutIfIdle()
 
         case .startFailed(let reason):
             errorMessage = "Couldn't start recording: \(reason)"
@@ -255,6 +274,19 @@ final class AppContainer {
             let minutes = max(1, Int((secondsRemaining / 60).rounded()))
             errorMessage = "Recording stops in \(minutes) min unless you save a clip."
         }
+    }
+
+    private func publishSaveCalloutIfIdle() {
+        guard Self.pendingSaves(in: sessionState) == 0,
+              saveBatchSucceeded || saveBatchFailed else { return }
+        saveCallout = saveBatchFailed ? .failed : .saved
+        saveBatchSucceeded = false
+        saveBatchFailed = false
+    }
+
+    private static func pendingSaves(in state: SessionState) -> Int {
+        if case .recording(let pending) = state { return pending }
+        return 0
     }
 
     private func applyConfig(_ config: RecordingConfig) {

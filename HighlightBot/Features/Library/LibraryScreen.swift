@@ -3,15 +3,18 @@ import SwiftData
 import SwiftUI
 
 /// Grid of saved clips, newest first. Tap to play; long-press for Share,
-/// Save to Photos, and Delete.
+/// Save to Photos, and Delete. Select mode toggles membership in a set of
+/// clip IDs (range-drag can later union a contiguous slice into the same set).
 struct LibraryScreen: View {
     @Environment(AppContainer.self) private var container
     @Query(sort: \Clip.createdAt, order: .reverse) private var clips: [Clip]
 
     @State private var playerRecord: ClipRecord?
-    @State private var pendingDelete: ClipRecord?
+    @State private var pendingDelete: [ClipRecord] = []
     @State private var showDeleteConfirm = false
     @State private var statusMessage: String?
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -24,63 +27,47 @@ struct LibraryScreen: View {
                         systemImage: "film.stack",
                         description: Text("Start recording on the Record tab and tap the screen to save the last few seconds.")
                     )
+                    .padding(.top, ScreenMetrics.top)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(storageText)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            headerRow
 
                             LazyVGrid(columns: columns, spacing: 12) {
                                 ForEach(clips) { clip in
                                     let record = clip.record
-                                    Button {
-                                        playerRecord = record
-                                    } label: {
-                                        ClipCell(record: record)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        ShareLink(item: record.fileURL) {
-                                            Label("Share", systemImage: "square.and.arrow.up")
-                                        }
-                                        Button {
-                                            Task { await saveToPhotos(record) }
-                                        } label: {
-                                            Label("Save to Photos", systemImage: "photo.badge.plus")
-                                        }
-                                        Button(role: .destructive) {
-                                            pendingDelete = record
-                                            showDeleteConfirm = true
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
-                                    }
+                                    clipCell(for: record)
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.bottom, isSelecting ? 72 : 12)
                     }
                 }
             }
+            .screenPadding()
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
                 ClipPlayerScreen(record: record)
             }
             .confirmationDialog(
-                "Delete this clip?",
+                deleteDialogTitle,
                 isPresented: $showDeleteConfirm,
-                titleVisibility: .visible,
-                presenting: pendingDelete
-            ) { record in
+                titleVisibility: .visible
+            ) {
                 Button("Delete", role: .destructive) {
-                    delete(record)
+                    deletePending()
                 }
-            } message: { _ in
-                Text("The video file is removed from this device.")
+            } message: {
+                Text(
+                    pendingDelete.count == 1
+                        ? "The video file is removed from this device."
+                        : "The video files are removed from this device."
+                )
+            }
+            .safeAreaInset(edge: .bottom) {
+                if isSelecting {
+                    selectionBar
+                }
             }
             .overlay(alignment: .bottom) {
                 if let statusMessage {
@@ -89,7 +76,7 @@ struct LibraryScreen: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .background(.regularMaterial, in: Capsule())
-                        .padding(.bottom, 12)
+                        .padding(.bottom, isSelecting ? 64 : 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -100,6 +87,98 @@ struct LibraryScreen: View {
                 guard !Task.isCancelled else { return }
                 statusMessage = nil
             }
+            .onChange(of: clips.count) { _, _ in
+                selectedIDs = selectedIDs.intersection(Set(clips.map(\.id)))
+                if clips.isEmpty {
+                    exitSelection()
+                }
+            }
+        }
+    }
+
+    private var headerRow: some View {
+        HStack {
+            Button(isSelecting ? "Done" : "Select") {
+                if isSelecting {
+                    exitSelection()
+                } else {
+                    isSelecting = true
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .accessibilityLabel(isSelecting ? "Done" : "Select clips")
+
+            Spacer()
+
+            Text(isSelecting ? selectedText : storageText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 16) {
+            shareSelectedButton
+            Spacer()
+            Button(role: .destructive) {
+                pendingDelete = selectedRecords
+                showDeleteConfirm = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(selectedIDs.isEmpty)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.bar)
+    }
+
+    @ViewBuilder
+    private var shareSelectedButton: some View {
+        let urls = selectedRecords.map(\.fileURL)
+        if urls.isEmpty {
+            Label("Share", systemImage: "square.and.arrow.up")
+                .foregroundStyle(.tertiary)
+        } else {
+            ShareLink(items: urls) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func clipCell(for record: ClipRecord) -> some View {
+        let selected = selectedIDs.contains(record.id)
+        Button {
+            if isSelecting {
+                toggleSelected(record.id)
+            } else {
+                playerRecord = record
+            }
+        } label: {
+            ClipCell(record: record, isSelecting: isSelecting, isSelected: selected)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(isSelecting ? (selected ? "Deselect" : "Select") : "Plays the clip")
+        .contextMenu {
+            if !isSelecting {
+                ShareLink(item: record.fileURL) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                Button {
+                    Task { await saveToPhotos(record) }
+                } label: {
+                    Label("Save to Photos", systemImage: "photo.badge.plus")
+                }
+                Button(role: .destructive) {
+                    pendingDelete = [record]
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
         }
     }
 
@@ -107,6 +186,47 @@ struct LibraryScreen: View {
         let bytes = clips.reduce(Int64(0)) { $0 + $1.sizeBytes }
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         return "\(clips.count) clip\(clips.count == 1 ? "" : "s") · \(size)"
+    }
+
+    private var selectedText: String {
+        let count = selectedIDs.count
+        if count == 0 { return "Select clips" }
+        return "\(count) selected"
+    }
+
+    private var selectedRecords: [ClipRecord] {
+        clips.compactMap { clip in
+            selectedIDs.contains(clip.id) ? clip.record : nil
+        }
+    }
+
+    private var deleteDialogTitle: String {
+        let count = pendingDelete.count
+        if count <= 1 { return "Delete this clip?" }
+        return "Delete \(count) clips?"
+    }
+
+    private func toggleSelected(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func exitSelection() {
+        isSelecting = false
+        selectedIDs.removeAll()
+    }
+
+    private func deletePending() {
+        for record in pendingDelete {
+            delete(record)
+        }
+        pendingDelete = []
+        if isSelecting {
+            exitSelection()
+        }
     }
 
     private func delete(_ record: ClipRecord) {
@@ -134,6 +254,8 @@ struct LibraryScreen: View {
 /// One grid cell: thumbnail, duration, relative time, and trigger source icon.
 struct ClipCell: View {
     let record: ClipRecord
+    var isSelecting = false
+    var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -149,6 +271,25 @@ struct ClipCell: View {
                         .padding(.vertical, 2)
                         .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
                         .padding(6)
+                }
+                .overlay(alignment: .topLeading) {
+                    if isSelecting {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(
+                                isSelected ? Color.white : Color.white.opacity(0.95),
+                                isSelected ? Color.accentColor : Color.black.opacity(0.35)
+                            )
+                            .padding(8)
+                            .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                    }
+                }
+                .overlay {
+                    if isSelecting && isSelected {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, lineWidth: 3)
+                    }
                 }
 
             HStack(spacing: 6) {

@@ -5,14 +5,7 @@ import UIKit
 /// does not move the record button at the bottom of the viewfinder.
 struct RootView: View {
     @Environment(AppContainer.self) private var container
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selectedTab: Tab = .record
-
-    /// Portrait has no leading/trailing safe area, so rounded screen corners
-    /// clip edge-hugging chrome. Landscape already has notch/home-indicator inset.
-    private var portraitGutter: CGFloat {
-        verticalSizeClass == .regular ? 8 : 0
-    }
 
     enum Tab: String, CaseIterable, Hashable {
         case record, library, settings
@@ -48,16 +41,11 @@ struct RootView: View {
                     .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .overlay(alignment: .top) {
             if !container.sessionState.isRecording {
                 topTabBar
+                    .padding(.top, 8)
             }
-        }
-        .safeAreaInset(edge: .leading, spacing: 0) {
-            if portraitGutter > 0 { Color.clear.frame(width: portraitGutter) }
-        }
-        .safeAreaInset(edge: .trailing, spacing: 0) {
-            if portraitGutter > 0 { Color.clear.frame(width: portraitGutter) }
         }
         .statusBarHidden(selectedTab == .record)
         .onAppear { applyOrientation(for: selectedTab) }
@@ -73,18 +61,19 @@ struct RootView: View {
     private var usesCameraChrome: Bool { selectedTab == .record }
 
     private var topTabBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             ViewThatFits(in: .horizontal) {
                 tabRow(iconOnly: false)
                 tabRow(iconOnly: true)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 16)
-        .safeAreaPadding(.horizontal)
-        .frame(maxWidth: .infinity)
-        .background(usesCameraChrome ? Color.clear : Color(uiColor: .systemBackground))
+        .padding(4)
+        .background(.regularMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(.white.opacity(usesCameraChrome ? 0.28 : 0.12), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
     }
 
     private func tabRow(iconOnly: Bool) -> some View {
@@ -140,5 +129,45 @@ struct RootView: View {
         } else {
             InterfaceOrientationLock.apply(.allButUpsideDown)
         }
+    }
+}
+
+// MARK: - Shared screen padding
+
+/// One set of insets for tab chrome, Library, Settings, and the clip player.
+enum ScreenMetrics {
+    static let horizontal: CGFloat = 32
+    /// Clears the floating tab pill; scroll views still draw behind it.
+    static let top: CGFloat = 60
+}
+
+private struct ScreenPaddingModifier: ViewModifier {
+    var edges: Edge.Set
+
+    func body(content: Content) -> some View {
+        content
+            .contentMargins(.leading, leading, for: .scrollContent)
+            .contentMargins(.trailing, trailing, for: .scrollContent)
+            .contentMargins(.top, top, for: .scrollContent)
+            .padding(
+                EdgeInsets(
+                    top: 0,
+                    leading: leading,
+                    bottom: 0,
+                    trailing: trailing
+                )
+            )
+    }
+
+    private var leading: CGFloat { edges.contains(.leading) ? ScreenMetrics.horizontal : 0 }
+    private var trailing: CGFloat { edges.contains(.trailing) ? ScreenMetrics.horizontal : 0 }
+    private var top: CGFloat { edges.contains(.top) ? ScreenMetrics.top : 0 }
+}
+
+extension View {
+    /// Insets a screen using `ScreenMetrics` so portrait rounding and the tab bar
+    /// leave the same gap everywhere.
+    func screenPadding(_ edges: Edge.Set = [.horizontal, .top]) -> some View {
+        modifier(ScreenPaddingModifier(edges: edges))
     }
 }
