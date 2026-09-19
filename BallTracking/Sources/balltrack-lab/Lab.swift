@@ -11,6 +11,9 @@ struct Lab {
               Writes DIR/track.json, DIR/summary.json, DIR/annotated.mp4 and prints a summary.
       extract --input clip.mp4 --out DIR [--every N] [--start SEC] [--end SEC]
               Writes PNG frames named fNNNNN_tSS.SSS.png for labelling.
+      mask    --input clip.mp4 --out DIR [--threshold 60] [--dump-frames 18,200]
+              Writes DIR/mask.mp4: the two-frame motion mask (white on black), stored orientation.
+              --dump-frames also writes those frames' raw mask planes as lossless PGM.
       score   --track DIR/track.json --truth truth.json [--tolerance 0.02]
               Reports recall, mean error, and false-positive frames against hand labels.
     """
@@ -30,6 +33,7 @@ struct Lab {
             switch command {
             case "run": try await RunCommand(options: options).run()
             case "extract": try await ExtractCommand(options: options).run()
+            case "mask": try await MaskCommand(options: options).run()
             case "score": try ScoreCommand(options: options).run()
             case "help", "--help", "-h": print(usage)
             default:

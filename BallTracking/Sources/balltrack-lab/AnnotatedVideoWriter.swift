@@ -146,29 +146,6 @@ struct AnnotatedVideoWriter {
 
         let state = frame?.state.rawValue ?? "—"
         let label = String(format: "f%05d  t%.3f  ", index, time) + state + "  cands=\(frame?.candidateCount ?? 0)"
-        drawText(label, in: context, at: CGPoint(x: 16, y: 16), height: height)
-    }
-
-    private static func drawText(_ text: String, in context: CGContext, at origin: CGPoint, height: Int) {
-        let font = CTFontCreateWithName("Menlo" as CFString, 28, nil)
-        // Use the CoreText attribute keys directly: CTLineDraw understands
-        // `kCTForegroundColorAttributeName` with a CGColor, whereas the AppKit
-        // `.foregroundColor` key expects an NSColor.
-        let attributes: [NSAttributedString.Key: Any] = [
-            kCTFontAttributeName as NSAttributedString.Key: font,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(red: 1, green: 1, blue: 0.2, alpha: 1),
-        ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
-        let bounds = CTLineGetBoundsWithOptions(line, [])
-        let box = CGRect(x: origin.x - 6, y: origin.y - 4, width: bounds.width + 12, height: bounds.height + 8)
-        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.6))
-        context.fill(box)
-        // Text draws in CG's native orientation; undo the flip locally.
-        context.saveGState()
-        context.translateBy(x: origin.x, y: origin.y + bounds.height)
-        context.scaleBy(x: 1, y: -1)
-        context.textPosition = CGPoint(x: 0, y: -bounds.minY)
-        CTLineDraw(line, context)
-        context.restoreGState()
+        LabDrawing.drawText(label, in: context, at: CGPoint(x: 16, y: 16))
     }
 }
