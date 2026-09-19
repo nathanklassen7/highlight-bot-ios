@@ -3,7 +3,12 @@ import Foundation
 /// User-facing recording settings. Persisted by the app as JSON.
 ///
 /// The defaults match the decided values in `docs/ios-app-plan.md` §6:
-/// 20 s buffer, 5 s segments, 1080p60 H.264 at ~10 Mbps with AAC audio.
+/// 20 s buffer, 2 s segments, 1080p60 H.264 at ~10 Mbps with AAC audio.
+///
+/// The segment interval is 2 s rather than the originally planned 5 s because
+/// `AVAssetWriter.flushSegment()` cannot be used with a fixed interval, so a
+/// save trigger waits for the next segment boundary. A shorter interval caps
+/// that wait at 2 s at the cost of a keyframe every 2 s.
 public struct RecordingConfig: Codable, Sendable, Equatable {
     /// Length of footage the user wants when they trigger a save (seconds).
     public var bufferSeconds: TimeInterval
@@ -30,7 +35,7 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
 
     public init(
         bufferSeconds: TimeInterval = 20,
-        segmentInterval: TimeInterval = 5,
+        segmentInterval: TimeInterval = 2,
         width: Int = 1920,
         height: Int = 1080,
         frameRate: Int = 60,

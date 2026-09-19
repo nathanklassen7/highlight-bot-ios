@@ -24,7 +24,7 @@ Three ways to get a rolling buffer on iOS were considered:
 
 Input to the writer comes from `AVCaptureVideoDataOutput` + `AVCaptureAudioDataOutput`, not from the writer's own capture connection. This is what makes ball tracking possible later: the same `CMSampleBuffer`s that feed the encoder are also visible to a `FrameAnalyzer`.
 
-**Trigger tail.** At trigger time the current segment holds 0–5s of undelivered footage. Call `assetWriter.flushSegment()` to force it out immediately, then the clip is `init segment + last k media segments`. The next segment begins at a forced keyframe, so recording continues seamlessly. *Must be verified in the spike (see §4, Phase 0); if `flushSegment()` misbehaves alongside a fixed interval, the fallback is a 1–2s segment interval, at a modest bitrate cost from more keyframes.*
+**Trigger tail.** At trigger time the current segment holds 0–`segmentInterval` s of undelivered footage. The original design called `assetWriter.flushSegment()` to force it out; the SDK header rules that out (it throws with a fixed interval, and the indefinite-interval mode disables writer-side compression). **Implemented fallback:** `RecordingPipeline.saveClip` waits for the next fixed boundary (≤ `segmentInterval` + margin), then the clip is `init segment + last k media segments`. With the 2 s default (§6) the clip ends 0–2 s after the trigger. The spike (§4, Phase 0) confirms the tail latency on device.
 
 **Clip granularity.** MVP saves whole segments, so a request for "last 20s" yields 20–25s. Exact trimming is a follow-up (passthrough `AVAssetExportSession` with a `timeRange`; cuts land on the nearest keyframe so it is still approximate). Segment interval is a single config constant; 5s is a reasonable default, not a hard requirement.
 
@@ -207,7 +207,7 @@ These were open questions during planning and are now settled. Treat them as req
 | Audio | Recorded by default (AAC); mic permission requested at first launch |
 | Clip container | `.mp4`, H.264 video + AAC audio, for maximum cross-platform share compatibility; HEVC available as a setting |
 | Capture defaults | 1080p, 60 fps, ~10 Mbps |
-| Segment interval | 5 s (single config constant; may drop to 1–2 s if the Phase 0 spike requires it) |
+| Segment interval | **2 s** (single config constant). Originally 5 s; changed during implementation because the `AVAssetWriter.h` header states `flushSegment()` throws unless `preferredOutputSegmentInterval` is indefinite, and indefinite mode only supports passthrough (no writer-side compression). A save therefore waits for the next fixed boundary, so the interval bounds save latency. Confirm on device in Phase 0. |
 
 ## 7. Risks
 

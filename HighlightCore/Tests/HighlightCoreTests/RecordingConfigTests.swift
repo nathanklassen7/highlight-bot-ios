@@ -8,7 +8,7 @@ struct RecordingConfigTests {
     func defaults() {
         let config = RecordingConfig.default
         #expect(config.bufferSeconds == 20)
-        #expect(config.segmentInterval == 5)
+        #expect(config.segmentInterval == 2)
         #expect(config.width == 1920)
         #expect(config.height == 1080)
         #expect(config.frameRate == 60)
@@ -30,6 +30,10 @@ struct RecordingConfigTests {
     @Test("segmentsPerBuffer rounds up and retainSeconds adds one interval")
     func derivedValues() {
         var config = RecordingConfig.default
+        #expect(config.segmentsPerBuffer == 10)
+        #expect(config.retainSeconds == 22)
+
+        config.segmentInterval = 5
         #expect(config.segmentsPerBuffer == 4)
         #expect(config.retainSeconds == 25)
 
@@ -48,7 +52,7 @@ struct RecordingConfigTests {
     @Test("validate reports each problem once")
     func validation() {
         var config = RecordingConfig.default
-        config.bufferSeconds = 2
+        config.bufferSeconds = config.segmentInterval / 2
         #expect(config.validate() == [.bufferTooShort])
 
         config = .default
@@ -87,6 +91,6 @@ struct RecordingConfigTests {
     @Test("RingBufferPolicy from config uses retainSeconds")
     func policyFromConfig() {
         let policy = RingBufferPolicy(config: .default)
-        #expect(policy.retainSeconds == 25)
+        #expect(policy.retainSeconds == 22)
     }
 }
