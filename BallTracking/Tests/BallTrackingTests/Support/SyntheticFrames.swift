@@ -35,6 +35,7 @@ enum SyntheticFrames {
             let maxY = min(height - 1, Int(disc.center.y + disc.radius) + 1)
             let minX = max(0, Int(disc.center.x - disc.radius) - 1)
             let maxX = min(width - 1, Int(disc.center.x + disc.radius) + 1)
+            guard minY <= maxY, minX <= maxX else { continue }
             for y in minY...maxY {
                 for x in minX...maxX {
                     let dx = Double(x) + 0.5 - disc.center.x
