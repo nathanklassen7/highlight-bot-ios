@@ -212,11 +212,14 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let recorder = SegmentedRecorder(
             config: config,
             queue: recorderQueue,
-            videoRotationAngle: source.captureRotationAngle
+            videoRotationAngle: source.captureRotationAngle,
+            clock: source.captureClock
         ) { [weak self] segment in
             self?.handleSegment(segment)
         }
         let fanout = SampleFanout(recorder: recorder, frameTap: frameTap)
+        // start() allocates the encoder; keep it ahead of setConsumer so that
+        // work never lands inside a capture callback.
         recorder.start()
         source.setConsumer(fanout)
 

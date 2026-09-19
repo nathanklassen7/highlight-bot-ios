@@ -1,10 +1,12 @@
+import HighlightCore
 import SwiftUI
 import UIKit
 
-/// Loads a JPEG thumbnail from disk off the main actor and shows a placeholder
-/// until it arrives (or if the file is missing).
+/// Resolves and loads a JPEG thumbnail off the main actor and shows a
+/// placeholder until it arrives (or if the file is missing). Takes the file
+/// name rather than a URL so `body` never touches the file system.
 struct ThumbnailImage: View {
-    let url: URL?
+    let fileName: String?
 
     @State private var image: UIImage?
 
@@ -22,15 +24,15 @@ struct ThumbnailImage: View {
             }
         }
         .clipped()
-        .task(id: url) {
-            image = await Self.load(url)
+        .task(id: fileName) {
+            image = await Self.load(fileName)
         }
     }
 
     // VERIFY: UIImage is annotated Sendable in the iOS 17 SDK; if the compiler
     // disagrees, load synchronously on the main actor instead.
-    nonisolated private static func load(_ url: URL?) async -> UIImage? {
-        guard let url else { return nil }
+    nonisolated private static func load(_ fileName: String?) async -> UIImage? {
+        guard let url = ClipRecord.resolveThumbnailURL(fileName: fileName) else { return nil }
         return UIImage(contentsOfFile: url.path)
     }
 }

@@ -47,4 +47,7 @@ protocol CaptureSource: AnyObject {
     /// data output delivers frames in the sensor's native orientation. Read at
     /// recording start and stamped into the file as metadata (no per-frame work).
     var captureRotationAngle: CGFloat { get }
+    /// The clock sample timestamps are expressed in. Lets the recorder pick a
+    /// writer start time before the first frame arrives.
+    var captureClock: CMClock { get }
 }

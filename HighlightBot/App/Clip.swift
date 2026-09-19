@@ -50,16 +50,22 @@ extension ClipRecord {
         AppDirectories.clips.appending(path: fileName)
     }
 
-    /// Absolute URL of the thumbnail. `thumbnailFileName` is relative to the
-    /// clips directory; if the exporter placed it under `AppDirectories.thumbnails`
-    /// instead, fall back to that location.
+    /// Absolute URL of the thumbnail. Hits the file system; prefer
+    /// `ThumbnailImage(fileName:)` in views so this never runs in `body`.
     var thumbnailURL: URL? {
-        guard let thumbnailFileName else { return nil }
-        let inClips = AppDirectories.clips.appending(path: thumbnailFileName)
+        Self.resolveThumbnailURL(fileName: thumbnailFileName)
+    }
+
+    /// `fileName` is relative to the clips directory; if the exporter placed it
+    /// under `AppDirectories.thumbnails` instead, fall back to that location.
+    /// Does one or two `stat` calls — call off the main thread when possible.
+    nonisolated static func resolveThumbnailURL(fileName: String?) -> URL? {
+        guard let fileName else { return nil }
+        let inClips = AppDirectories.clips.appending(path: fileName)
         if FileManager.default.fileExists(atPath: inClips.path) {
             return inClips
         }
-        let inThumbnails = AppDirectories.thumbnails.appending(path: thumbnailFileName)
+        let inThumbnails = AppDirectories.thumbnails.appending(path: fileName)
         if FileManager.default.fileExists(atPath: inThumbnails.path) {
             return inThumbnails
         }

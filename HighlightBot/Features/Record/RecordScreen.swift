@@ -9,7 +9,6 @@ struct RecordScreen: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var isDimmed = false
-    @State private var playerRecord: ClipRecord?
     @State private var recordingStartedAt: Date?
 
     var body: some View {
@@ -31,9 +30,6 @@ struct RecordScreen: View {
         }
         .background(Color.black)
         .animation(.easeInOut(duration: 0.2), value: container.errorMessage)
-        .fullScreenCover(item: $playerRecord) { record in
-            ClipPlayerScreen(record: record)
-        }
         .onChange(of: container.sessionState) { oldState, newState in
             if newState.isRecording && !oldState.isRecording {
                 recordingStartedAt = .now
@@ -106,6 +102,7 @@ struct RecordScreen: View {
                 Spacer()
                 saveStatusBadge
                 if !isDimmed {
+                    lensButton
                     dimButton
                 }
             }
@@ -113,21 +110,45 @@ struct RecordScreen: View {
             Spacer()
 
             if !isDimmed {
-                HStack(alignment: .bottom, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        bufferBar
-                        clipSecondsPicker
-                    }
-                    Spacer()
-                    recordButton
-                    Spacer()
-                    lastClipButton
-                        .frame(width: 112, alignment: .trailing)
+                // Record is landscape-only, but this view stays mounted (hidden)
+                // while Library/Settings show in portrait. Its minimum width must
+                // stay under a portrait phone or the RootView ZStack grows past the
+                // window and pushes sibling screens off the edges.
+                ViewThatFits(in: .horizontal) {
+                    bottomControlsWide
+                    bottomControlsCompact
                 }
             }
         }
         .padding(16)
         .allowsHitTesting(!isDimmed)
+    }
+
+    private var bottomControlsWide: some View {
+        HStack(alignment: .bottom, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                bufferBar
+                clipSecondsPicker
+            }
+            Spacer()
+            recordButton
+            Spacer()
+            lastClipButton
+                .frame(width: 112, alignment: .trailing)
+        }
+    }
+
+    private var bottomControlsCompact: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            clipSecondsPicker
+            HStack(alignment: .bottom, spacing: 12) {
+                bufferBar
+                Spacer(minLength: 0)
+                recordButton
+                Spacer(minLength: 0)
+                lastClipButton
+            }
+        }
     }
 
     // MARK: - Overlay pieces
@@ -173,6 +194,30 @@ struct RecordScreen: View {
         .background(.black.opacity(0.55), in: Capsule())
     }
 
+    /// Toggles wide / ultra-wide. Lens changes reconfigure the camera, so it
+    /// is locked while a session is live; the setting applies on the next start.
+    private var lensButton: some View {
+        let lens = container.settings.config.lens
+        let locked = container.sessionState != .idle
+        return Button {
+            container.settings.config.lens = lens.toggled
+        } label: {
+            Text(lens.shortLabel)
+                .font(.footnote.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .frame(minWidth: 40)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 4)
+                .background(.black.opacity(0.55), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(locked)
+        .opacity(locked ? 0.5 : 1)
+        .accessibilityLabel("Lens: \(lens.displayName)")
+        .accessibilityHint(locked ? "Stop recording to change lens" : "Switches to \(lens.toggled.displayName)")
+    }
+
     private var dimButton: some View {
         Button {
             isDimmed = true
@@ -187,17 +232,22 @@ struct RecordScreen: View {
         .accessibilityLabel("Dim screen")
     }
 
+    @ViewBuilder
     private var bufferBar: some View {
-        let total = max(container.settings.config.bufferSeconds, 1)
-        let buffered = min(container.metrics.bufferedSeconds, total)
-        return VStack(alignment: .leading, spacing: 4) {
-            ProgressView(value: buffered, total: total)
-                .tint(.red)
-                .frame(width: 200)
-            Text("\(Int(buffered.rounded(.down)))s / \(Int(total))s buffered")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.85))
-                .monospacedDigit()
+        if container.sessionState.isRecording {
+            let total = max(container.settings.config.bufferSeconds, 1)
+            let buffered = min(container.metrics.bufferedSeconds, total)
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: buffered, total: total)
+                    .tint(.red)
+                    .frame(maxWidth: 200)
+                Text("\(Int(buffered.rounded(.down)))s / \(Int(total))s buffered")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 200)
         }
     }
 
@@ -248,9 +298,9 @@ struct RecordScreen: View {
     private var lastClipButton: some View {
         if let last = container.lastClip {
             Button {
-                playerRecord = last
+                container.openLastClipInLibrary()
             } label: {
-                ThumbnailImage(url: last.thumbnailURL)
+                ThumbnailImage(fileName: last.thumbnailFileName)
                     .frame(width: 96, height: 54)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
@@ -265,7 +315,8 @@ struct RecordScreen: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open last clip")
+            .contentShape(Rectangle())
+            .accessibilityLabel("Open last clip in Library")
         } else {
             Color.clear.frame(width: 96, height: 54)
         }

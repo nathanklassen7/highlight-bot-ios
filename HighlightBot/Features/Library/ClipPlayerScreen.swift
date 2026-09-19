@@ -1,7 +1,7 @@
 import AVFoundation
-import AVKit
 import HighlightCore
 import SwiftUI
+import UIKit
 
 /// Full-screen player for one clip with loop and slow-motion controls, plus
 /// Share / Save to Photos / Delete.
@@ -21,6 +21,9 @@ struct ClipPlayerScreen: View {
     @State private var currentTime: Double = 0
     @State private var duration: Double = 0
     @State private var isScrubbing = false
+    @State private var isPlaying = false
+    @State private var isOverlayVisible = true
+    @State private var overlayHideTask: Task<Void, Never>?
     @State private var timeObserver: Any?
 
     private static let playbackRates: [Float] = [1.0, 0.5, 0.25, 0.15]
@@ -29,9 +32,87 @@ struct ClipPlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VideoPlayer(player: player)
+            PlayerLayerView(player: player)
                 .ignoresSafeArea()
 
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    handleScreenTap()
+                }
+
+            chromeOverlay
+                .contentShape(Rectangle())
+                .opacity(isOverlayVisible ? 1 : 0)
+                .allowsHitTesting(isOverlayVisible)
+                .accessibilityHidden(!isOverlayVisible)
+                .simultaneousGesture(TapGesture().onEnded {
+                    scheduleOverlayAutoHide()
+                })
+        }
+        .statusBarHidden(true)
+        .onAppear { startPlayback() }
+        .onDisappear {
+            overlayHideTask?.cancel()
+            overlayHideTask = nil
+            removeTimeObserver()
+            player.pause()
+            looper?.disableLooping()
+            looper = nil
+        }
+        .onChange(of: isPlaying) { _, playing in
+            if playing {
+                scheduleOverlayAutoHide()
+            } else {
+                overlayHideTask?.cancel()
+                overlayHideTask = nil
+                isOverlayVisible = true
+            }
+        }
+        .onChange(of: isScrubbing) { _, scrubbing in
+            if scrubbing {
+                overlayHideTask?.cancel()
+                overlayHideTask = nil
+                isOverlayVisible = true
+            } else {
+                scheduleOverlayAutoHide()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
+            guard !isLooping else { return }
+            guard notification.object as AnyObject? === player.currentItem else { return }
+            handlePlaybackEnded()
+        }
+        .confirmationDialog("Delete this clip?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteClip() }
+        } message: {
+            Text("The video file is removed from this device.")
+        }
+        .overlay(alignment: .top) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.75), in: Capsule())
+                    .padding(.top, 60)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: statusMessage)
+        .animation(.easeInOut(duration: 0.2), value: isOverlayVisible)
+        .task(id: statusMessage) {
+            guard statusMessage != nil else { return }
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            statusMessage = nil
+        }
+    }
+
+    private var chromeOverlay: some View {
+        ZStack {
             VStack {
                 HStack {
                     Button {
@@ -63,40 +144,25 @@ struct ClipPlayerScreen: View {
                 }
                 .padding(.bottom, 12)
             }
-            .screenPadding(.horizontal)
+            .padding(.horizontal, ScreenMetrics.horizontal)
+
+            playPauseButton
         }
-        .statusBarHidden(true)
-        .onAppear { startPlayback() }
-        .onDisappear {
-            removeTimeObserver()
-            player.pause()
-            looper?.disableLooping()
-            looper = nil
+    }
+
+    private var playPauseButton: some View {
+        Button {
+            togglePlayback()
+        } label: {
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(.white)
+                .offset(x: isPlaying ? 0 : 2)
+                .frame(width: 72, height: 72)
+                .background(.black.opacity(0.55), in: Circle())
         }
-        .confirmationDialog("Delete this clip?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { deleteClip() }
-        } message: {
-            Text("The video file is removed from this device.")
-        }
-        .overlay(alignment: .top) {
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.black.opacity(0.75), in: Capsule())
-                    .padding(.top, 60)
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: statusMessage)
-        .task(id: statusMessage) {
-            guard statusMessage != nil else { return }
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            statusMessage = nil
-        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isPlaying ? "Pause" : "Play")
     }
 
     private var scrubber: some View {
@@ -222,9 +288,68 @@ struct ClipPlayerScreen: View {
 
     private func startPlayback() {
         duration = record.duration
-        player.actionAtItemEnd = .advance
         applyLooping()
         addTimeObserver()
+        scheduleOverlayAutoHide()
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            player.pause()
+            markPlaybackInactive()
+            return
+        }
+        if isAtEnd {
+            seek(to: 0, preview: false)
+        }
+        player.rate = rate
+        isPlaying = true
+    }
+
+    private func handleScreenTap() {
+        if !isOverlayVisible {
+            isOverlayVisible = true
+        }
+        scheduleOverlayAutoHide()
+    }
+
+    private func handlePlaybackEnded() {
+        currentTime = scrubDuration
+        markPlaybackInactive()
+    }
+
+    private func markPlaybackInactive() {
+        isPlaying = false
+        overlayHideTask?.cancel()
+        overlayHideTask = nil
+        isOverlayVisible = true
+    }
+
+    private var isAtEnd: Bool {
+        !isLooping && currentTime >= scrubDuration - 0.05
+    }
+
+    private var isPlaybackActive: Bool {
+        isPlaying && player.rate != 0 && !isAtEnd
+    }
+
+    private func scheduleOverlayAutoHide() {
+        overlayHideTask?.cancel()
+        guard isPlaybackActive, !isScrubbing, !UIAccessibility.isVoiceOverRunning else {
+            if !isPlaybackActive {
+                isOverlayVisible = true
+            }
+            return
+        }
+        overlayHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            guard isPlaybackActive, !isScrubbing else {
+                isOverlayVisible = true
+                return
+            }
+            isOverlayVisible = false
+        }
     }
 
     /// Rebuilds the queue: an `AVPlayerLooper` when looping, a single item otherwise.
@@ -233,12 +358,14 @@ struct ClipPlayerScreen: View {
         looper?.disableLooping()
         looper = nil
         player.removeAllItems()
+        player.actionAtItemEnd = isLooping ? .advance : .pause
         if isLooping {
             looper = AVPlayerLooper(player: player, templateItem: item)
         } else {
             player.insert(item, after: nil)
         }
         player.rate = rate
+        isPlaying = player.rate != 0
     }
 
     private func applyRate(_ newRate: Float) {
@@ -252,11 +379,19 @@ struct ClipPlayerScreen: View {
         removeTimeObserver()
         let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-            guard !isScrubbing else { return }
-            currentTime = seconds(from: time)
-            if let itemDuration = player.currentItem?.duration {
-                let value = seconds(from: itemDuration)
-                if value > 0 { duration = value }
+            MainActor.assumeIsolated {
+                isPlaying = player.timeControlStatus == .playing && player.rate != 0
+                guard !isScrubbing else { return }
+                currentTime = seconds(from: time)
+                if let itemDuration = player.currentItem?.duration {
+                    let value = seconds(from: itemDuration)
+                    if value > 0 { duration = value }
+                }
+                if !isLooping, duration > 0, currentTime >= duration - 0.05,
+                   player.timeControlStatus != .playing || player.rate == 0 {
+                    currentTime = duration
+                    markPlaybackInactive()
+                }
             }
         }
     }
@@ -314,5 +449,37 @@ struct ClipPlayerScreen: View {
         } catch {
             statusMessage = "Delete failed: \(error.localizedDescription)"
         }
+    }
+}
+
+/// Renders `player` with aspect-fit video and no system playback controls.
+private struct PlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerUIView {
+        PlayerUIView(player: player)
+    }
+
+    func updateUIView(_ uiView: PlayerUIView, context: Context) {
+        uiView.playerLayer.player = player
+    }
+}
+
+private final class PlayerUIView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+    init(player: AVPlayer) {
+        super.init(frame: .zero)
+        backgroundColor = .black
+        isUserInteractionEnabled = false
+        playerLayer.player = player
+        playerLayer.videoGravity = .resizeAspect
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }

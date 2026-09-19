@@ -20,11 +20,14 @@ import HighlightCore
 /// - The delegate callback arrives on AVFoundation's own queue and only reads
 ///   session bookkeeping under `lock`.
 ///
-/// Session start is lazy: `AVAssetWriter.initialSegmentStartTime` cannot be
-/// changed after `startWriting()`, and we do not know the first PTS until the
-/// first video sample arrives. So `start()` builds the writer and inputs, and
-/// the first `appendVideo` sets `initialSegmentStartTime`, calls
-/// `startWriting()`, then `startSession(atSourceTime:)` with that PTS.
+/// Writer start is eager: `startWriting()` is where VideoToolbox builds the
+/// hardware encoder (100–300 ms). Doing that inside the first capture callback
+/// stalls the data output long enough to drop frames, so `start()` does it
+/// before any consumer is attached. `initialSegmentStartTime` must be set
+/// before `startWriting()` but need not equal the first frame's PTS; it is
+/// read from the source's capture clock, and segment boundaries fall at
+/// `initialSegmentStartTime + N * segmentInterval`. The first `appendVideo`
+/// then only calls `startSession(atSourceTime:)` with the real first PTS.
 /// `@unchecked Sendable`: all mutable state is guarded by `lock`.
 final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Sendable {
     private let config: RecordingConfig
@@ -32,6 +35,8 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     private let onSegment: @Sendable (IncomingSegment) -> Void
     /// Display rotation stamped into the video track (degrees). Metadata only.
     private let videoRotationAngle: CGFloat
+    /// Clock the source stamps samples with; used to choose the writer start time.
+    private let clock: CMClock
 
     private let lock = NSLock()
     // All of the following are guarded by `lock`.
@@ -39,6 +44,8 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     private var videoInput: AVAssetWriterInput?
     private var audioInput: AVAssetWriterInput?
     private var sessionStarted = false
+    /// `initialSegmentStartTime`; segment boundaries are measured from here.
+    private var writerStartTime: CMTime = .invalid
     private var sessionStartPTS: CMTime = .invalid
     private var lastVideoPTS: CMTime = .invalid
     private var sessionID: SessionID?
@@ -52,10 +59,12 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     init(config: RecordingConfig,
          queue: DispatchQueue,
          videoRotationAngle: CGFloat = 0,
+         clock: CMClock = CMClockGetHostTimeClock(),
          onSegment: @escaping @Sendable (IncomingSegment) -> Void) {
         self.config = config
         self.queue = queue
         self.videoRotationAngle = videoRotationAngle
+        self.clock = clock
         self.onSegment = onSegment
         super.init()
     }
@@ -107,7 +116,10 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
 
     // MARK: - Lifecycle
 
-    /// Creates a fresh writer and a new `SessionID`. Idempotent while running.
+    /// Creates a fresh writer and a new `SessionID`, and starts writing so the
+    /// encoder is warm before frames arrive. Call before attaching the
+    /// recorder as a consumer; not from the capture queue. Idempotent while
+    /// running.
     func start() {
         lock.lock(); defer { lock.unlock() }
         guard writer == nil else { return }
@@ -142,11 +154,25 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
             }
         }
 
+        // VERIFY on device: AVAssetWriter.h requires a numeric initialSegmentStartTime when
+        // preferredOutputSegmentInterval is positive, set before startWriting(). Using the
+        // capture clock's "now" (rather than the first PTS) lets startWriting() — and the
+        // encoder allocation it triggers — run here instead of inside the first capture
+        // callback. Frames arrive after this point, so their PTS is ≥ this time.
+        let startTime = CMClockGetTime(clock)
+        newWriter.initialSegmentStartTime = startTime
+        guard newWriter.startWriting() else {
+            let message = newWriter.error?.localizedDescription ?? "status \(newWriter.status.rawValue)"
+            Log.recorder.error("startWriting failed: \(message, privacy: .public)")
+            return
+        }
+
         writer = newWriter
         videoInput = video
         audioInput = audio
         sessionID = newSessionID
         sessionStarted = false
+        writerStartTime = startTime
         sessionStartPTS = .invalid
         lastVideoPTS = .invalid
         mediaSeq = 0
@@ -154,7 +180,7 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         skippedVideoAppendCount = 0
         skippedAudioAppendCount = 0
         didLogFailure = false
-        Log.recorder.info("Recorder prepared session \(newSessionID.description, privacy: .public) (\(self.config.width)x\(self.config.height)@\(self.config.frameRate) \(self.config.codec.rawValue, privacy: .public))")
+        Log.recorder.info("Recorder writing session \(newSessionID.description, privacy: .public) (\(self.config.width)x\(self.config.height)@\(self.config.frameRate) \(self.config.codec.rawValue, privacy: .public)) from \(startTime.seconds, format: .fixed(precision: 3))")
     }
 
     /// Whether an on-demand flush is possible. Always `false` today.
@@ -190,12 +216,12 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     }
 
     /// Seconds until the writer closes the current segment, based on the
-    /// session start and the last appended video PTS. Nil before the session
-    /// starts. Used by the pipeline to size its wait after a trigger.
+    /// writer start time and the last appended video PTS. Nil before the
+    /// session starts. Used by the pipeline to size its wait after a trigger.
     var secondsUntilNextBoundary: TimeInterval? {
         lock.lock(); defer { lock.unlock() }
-        guard sessionStarted, sessionStartPTS.isValid, lastVideoPTS.isValid else { return nil }
-        let elapsed = (lastVideoPTS - sessionStartPTS).seconds
+        guard sessionStarted, writerStartTime.isValid, lastVideoPTS.isValid else { return nil }
+        let elapsed = (lastVideoPTS - writerStartTime).seconds
         guard elapsed.isFinite, elapsed >= 0, config.segmentInterval > 0 else { return nil }
         let intoSegment = elapsed.truncatingRemainder(dividingBy: config.segmentInterval)
         return config.segmentInterval - intoSegment
@@ -210,7 +236,12 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
 
         guard let writer else { return }
         guard started, writer.status == .writing else {
-            // Never started a session: nothing on disk, nothing to finish.
+            // Writing but no session was ever started (no frame arrived): the
+            // writer holds no samples. Cancel rather than finish so it does not
+            // try to emit segments for an empty session.
+            if writer.status == .writing {
+                writer.cancelWriting()
+            }
             Log.recorder.info("Recorder stopped before any frame arrived")
             return
         }
@@ -255,26 +286,17 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lastVideoPTS = pts
 
         if !sessionStarted {
-            // startWriting() may only be attempted once per writer; a failed writer stays failed
-            // until restart() replaces it.
-            guard writer.status == .unknown else {
-                logFailureOnce(writer, context: "startWriting (writer already failed)")
+            guard writer.status == .writing else {
+                logFailureOnce(writer, context: "startSession (writer not writing)")
                 return
             }
-            // VERIFY on device: AVAssetWriter.h says a numeric initialSegmentStartTime is required
-            // when preferredOutputSegmentInterval is positive and "cannot be set after writing has
-            // started", so it is set here, immediately before startWriting(), to the first
-            // sample's PTS, and startSession uses the same time (as in the WWDC20 fMP4 sample).
-            // Segment boundaries then fall at firstPTS + N * segmentInterval.
-            writer.initialSegmentStartTime = pts
-            guard writer.startWriting() else {
-                logFailureOnce(writer, context: "startWriting")
-                return
-            }
+            // A frame captured before the writer start time (in flight when the
+            // consumer attached) cannot belong to the first segment; skip it.
+            guard pts >= writerStartTime else { return }
             writer.startSession(atSourceTime: pts)
             sessionStarted = true
             sessionStartPTS = pts
-            Log.recorder.info("Writer session started at pts=\(pts.seconds, format: .fixed(precision: 3))")
+            Log.recorder.info("Writer session started at pts=\(pts.seconds, format: .fixed(precision: 3)) (\((pts - self.writerStartTime).seconds * 1_000, format: .fixed(precision: 0)) ms after writer start)")
         }
 
         guard writer.status == .writing else {

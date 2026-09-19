@@ -85,6 +85,8 @@ final class AppContainer {
     var metrics: PipelineMetrics = .zero
     /// Most recently saved clip (restored from the store on launch).
     var lastClip: ClipRecord?
+    /// Clip the Library tab should open after leaving Record.
+    var pendingLibraryClip: ClipRecord?
     /// Transient, user-facing error text. Views clear it after showing it.
     var errorMessage: String?
     /// Outcome shown in the Record save pill after in-flight saves drain.
@@ -213,6 +215,20 @@ final class AppContainer {
     /// Start or stop recording.
     func toggleRecording() {
         emit(TriggerEvent(source: .ui, kind: .toggleRecording))
+    }
+
+    /// Stop a live session if needed, then ask the Library tab to play `lastClip`.
+    func openLastClipInLibrary() {
+        guard let lastClip else { return }
+        switch sessionState {
+        case .starting, .stopping:
+            return
+        case .recording, .interrupted:
+            pendingLibraryClip = lastClip
+            toggleRecording()
+        case .idle:
+            pendingLibraryClip = lastClip
+        }
     }
 
     /// Change how many seconds a save captures.

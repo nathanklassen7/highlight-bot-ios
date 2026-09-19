@@ -166,6 +166,9 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     /// Replayed files are already upright.
     var captureRotationAngle: CGFloat { 0 }
 
+    /// Replay re-stamps every sample onto the host clock.
+    var captureClock: CMClock { CMClockGetHostTimeClock() }
+
     // MARK: - Replay loop (dedicated thread)
 
     private func isStopRequested() -> Bool {

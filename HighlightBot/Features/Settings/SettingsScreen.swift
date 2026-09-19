@@ -60,6 +60,11 @@ struct SettingsScreen: View {
                 }
 
                 Section {
+                    Picker("Lens", selection: $settings.config.lens) {
+                        ForEach(CameraLens.allCases) { lens in
+                            Text(lens.displayName).tag(lens)
+                        }
+                    }
                     // Width is the selection; height follows in onChange below.
                     Picker("Resolution", selection: $settings.config.width) {
                         ForEach(Resolution.allCases) { resolution in
@@ -82,6 +87,8 @@ struct SettingsScreen: View {
                 } footer: {
                     if isRecording {
                         Text("Capture settings apply the next time recording starts.")
+                    } else if settings.config.lens == .ultraWide {
+                        Text("Ultra Wide tops out at 60 fps on most iPhones; higher rates fall back to the fastest it supports. 120 fps captures at 720p. H.264 shares everywhere; HEVC makes smaller files.")
                     } else {
                         Text("120 fps captures at 720p. H.264 shares everywhere; HEVC makes smaller files.")
                     }
@@ -107,7 +114,8 @@ struct SettingsScreen: View {
                     LabeledContent("Minimum iOS", value: "17.2")
                 }
             }
-            .screenPadding()
+            // Form manages its own horizontal insets; only clear the tab pill.
+            .contentMargins(.top, ScreenMetrics.top, for: .scrollContent)
             .toolbar(.hidden, for: .navigationBar)
             .confirmationDialog(
                 "Delete all clips?",

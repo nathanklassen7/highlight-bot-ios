@@ -31,7 +31,11 @@ struct LibraryScreen: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            headerRow
+                            Text(isSelecting ? selectedText : storageText)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .frame(maxWidth: .infinity, alignment: .trailing)
 
                             LazyVGrid(columns: columns, spacing: 12) {
                                 ForEach(clips) { clip in
@@ -40,11 +44,12 @@ struct LibraryScreen: View {
                                 }
                             }
                         }
-                        .padding(.bottom, isSelecting ? 72 : 12)
+                        .padding(.horizontal, ScreenMetrics.horizontal)
+                        .padding(.top, ScreenMetrics.top)
+                        .padding(.bottom, isSelecting ? 200 : 88)
                     }
                 }
             }
-            .screenPadding()
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
                 ClipPlayerScreen(record: record)
@@ -64,9 +69,10 @@ struct LibraryScreen: View {
                         : "The video files are removed from this device."
                 )
             }
-            .safeAreaInset(edge: .bottom) {
-                if isSelecting {
-                    selectionBar
+            .overlay(alignment: .bottomTrailing) {
+                if !clips.isEmpty {
+                    selectionFABStack
+                        .padding(.bottom, 16)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -76,7 +82,7 @@ struct LibraryScreen: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
                         .background(.regularMaterial, in: Capsule())
-                        .padding(.bottom, isSelecting ? 64 : 12)
+                        .padding(.bottom, 88)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -93,58 +99,66 @@ struct LibraryScreen: View {
                     exitSelection()
                 }
             }
+            .onAppear { consumePendingLibraryClip() }
+            .onChange(of: container.pendingLibraryClip) { _, _ in
+                consumePendingLibraryClip()
+            }
         }
     }
 
-    private var headerRow: some View {
-        HStack {
-            Button(isSelecting ? "Done" : "Select") {
+    private var hasSelection: Bool { !selectedIDs.isEmpty }
+
+    private var selectionFABStack: some View {
+        VStack(spacing: 12) {
+            if isSelecting {
+                shareFAB
+                deleteFAB
+            }
+
+            Button {
                 if isSelecting {
                     exitSelection()
                 } else {
                     isSelecting = true
                 }
-            }
-            .font(.footnote.weight(.semibold))
-            .accessibilityLabel(isSelecting ? "Done" : "Select clips")
-
-            Spacer()
-
-            Text(isSelecting ? selectedText : storageText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
-    }
-
-    private var selectionBar: some View {
-        HStack(spacing: 16) {
-            shareSelectedButton
-            Spacer()
-            Button(role: .destructive) {
-                pendingDelete = selectedRecords
-                showDeleteConfirm = true
             } label: {
-                Label("Delete", systemImage: "trash")
+                LibraryActionCircle(
+                    systemImage: isSelecting ? "checkmark" : "checklist",
+                    tint: isSelecting ? AppPalette.confirm : AppPalette.accent
+                )
             }
-            .disabled(selectedIDs.isEmpty)
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSelecting ? "Done" : "Select clips")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.bar)
+        .animation(.easeInOut(duration: 0.2), value: isSelecting)
     }
 
     @ViewBuilder
-    private var shareSelectedButton: some View {
+    private var shareFAB: some View {
         let urls = selectedRecords.map(\.fileURL)
-        if urls.isEmpty {
-            Label("Share", systemImage: "square.and.arrow.up")
-                .foregroundStyle(.tertiary)
-        } else {
+        if hasSelection {
             ShareLink(items: urls) {
-                Label("Share", systemImage: "square.and.arrow.up")
+                LibraryActionCircle(systemImage: "square.and.arrow.up", tint: AppPalette.accent)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share selected clips")
+        } else {
+            LibraryActionCircle(systemImage: "square.and.arrow.up", tint: AppPalette.accent, enabled: false)
+                .accessibilityLabel("Share selected clips")
+                .accessibilityAddTraits(.isButton)
         }
+    }
+
+    private var deleteFAB: some View {
+        Button {
+            pendingDelete = selectedRecords
+            showDeleteConfirm = true
+        } label: {
+            LibraryActionCircle(systemImage: "trash", tint: AppPalette.danger, enabled: hasSelection)
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSelection)
+        .accessibilityLabel("Delete selected clips")
     }
 
     @ViewBuilder
@@ -219,6 +233,15 @@ struct LibraryScreen: View {
         selectedIDs.removeAll()
     }
 
+    private func consumePendingLibraryClip() {
+        guard let clip = container.pendingLibraryClip else { return }
+        container.pendingLibraryClip = nil
+        if isSelecting {
+            exitSelection()
+        }
+        playerRecord = clip
+    }
+
     private func deletePending() {
         for record in pendingDelete {
             delete(record)
@@ -259,7 +282,7 @@ struct ClipCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ThumbnailImage(url: record.thumbnailURL)
+            ThumbnailImage(fileName: record.thumbnailFileName)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
@@ -279,7 +302,7 @@ struct ClipCell: View {
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(
                                 isSelected ? Color.white : Color.white.opacity(0.95),
-                                isSelected ? Color.accentColor : Color.black.opacity(0.35)
+                                isSelected ? AppPalette.accent : Color.black.opacity(0.35)
                             )
                             .padding(8)
                             .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
@@ -288,7 +311,7 @@ struct ClipCell: View {
                 .overlay {
                     if isSelecting && isSelected {
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.accentColor, lineWidth: 3)
+                            .strokeBorder(AppPalette.accent, lineWidth: 3)
                     }
                 }
 
@@ -319,5 +342,21 @@ struct ClipCell: View {
         case .system: "gearshape.fill"
         default: "questionmark.circle"
         }
+    }
+}
+
+private struct LibraryActionCircle: View {
+    let systemImage: String
+    let tint: Color
+    var enabled = true
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 56, height: 56)
+            .background(.regularMaterial, in: Circle())
+            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
+            .opacity(enabled ? 1 : 0.35)
     }
 }

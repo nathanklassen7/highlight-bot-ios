@@ -35,10 +35,12 @@ enum ExportError: LocalizedError {
 /// shareable `.mp4` plus a JPEG thumbnail.
 ///
 /// Steps: stream-concatenate the segment files into `tmp/export/<base>.mp4`
-/// (an fMP4 byte stream is a valid MP4), passthrough-export to
-/// `clipsDirectory/<base>.mp4` (no re-encode, typically <1 s), then generate a
-/// 640×360 thumbnail at 0.5 s. If passthrough fails, fall back to a re-encode
-/// with `AVAssetExportPresetHighestQuality` and log a warning.
+/// (an fMP4 byte stream is a valid MP4), then passthrough-export to
+/// `clipsDirectory/<base>.mp4` (no re-encode, typically <1 s) while, in
+/// parallel, generating a 640×360 thumbnail at 0.5 s from the same
+/// concatenated stream — the decoder spin-up overlaps the export instead of
+/// following it. If passthrough fails, fall back to a re-encode with
+/// `AVAssetExportPresetHighestQuality` and log a warning.
 final class ClipExporter: Sendable {
     let clipsDirectory: URL
     private let lastExport = OSAllocatedUnfairLock(initialState: 0.0)
@@ -73,19 +75,21 @@ final class ClipExporter: Sendable {
         try concatenate(plan.urls, to: concatURL)
 
         let asset = AVURLAsset(url: concatURL)
+        // Thumbnail reads the concatenated stream, so it can run alongside the
+        // export rather than waiting for the finished file.
+        async let thumbnail = makeThumbnail(asset: asset, baseName: baseName)
         do {
             try await runExport(asset: asset, preset: AVAssetExportPresetPassthrough, to: outputURL)
         } catch {
             Log.export.warning("Passthrough export failed (\(error.localizedDescription, privacy: .public)); re-encoding with HighestQuality")
             try await runExport(asset: asset, preset: AVAssetExportPresetHighestQuality, to: outputURL)
         }
-
-        let exportedAsset = AVURLAsset(url: outputURL)
-        let duration = try await exportedAsset.load(.duration).seconds
-        let thumbnailURL = await makeThumbnail(asset: exportedAsset, baseName: baseName)
+        let thumbnailURL = await thumbnail
         let sizeBytes = Self.fileSize(at: outputURL)
 
-        return ExportedClip(fileURL: outputURL, thumbnailURL: thumbnailURL, duration: duration, sizeBytes: sizeBytes)
+        // Passthrough keeps the plan's timing, so reparsing the output for its
+        // duration is redundant.
+        return ExportedClip(fileURL: outputURL, thumbnailURL: thumbnailURL, duration: plan.duration, sizeBytes: sizeBytes)
     }
 
     // MARK: - Steps

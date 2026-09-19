@@ -32,6 +32,8 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     public var minimumFreeBytes: Int64
     /// Whether the debug metrics overlay is shown.
     public var debugOverlayEnabled: Bool
+    /// Which back camera to capture from.
+    public var lens: CameraLens
 
     public init(
         bufferSeconds: TimeInterval = 20,
@@ -44,7 +46,8 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         recordAudio: Bool = true,
         inactivityTimeout: TimeInterval = 45 * 60,
         minimumFreeBytes: Int64 = 500 * 1024 * 1024,
-        debugOverlayEnabled: Bool = false
+        debugOverlayEnabled: Bool = false,
+        lens: CameraLens = .wide
     ) {
         self.bufferSeconds = bufferSeconds
         self.segmentInterval = segmentInterval
@@ -57,6 +60,24 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         self.inactivityTimeout = inactivityTimeout
         self.minimumFreeBytes = minimumFreeBytes
         self.debugOverlayEnabled = debugOverlayEnabled
+        self.lens = lens
+    }
+
+    // Custom decoding so configs persisted before `lens` existed still load.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        bufferSeconds = try c.decode(TimeInterval.self, forKey: .bufferSeconds)
+        segmentInterval = try c.decode(TimeInterval.self, forKey: .segmentInterval)
+        width = try c.decode(Int.self, forKey: .width)
+        height = try c.decode(Int.self, forKey: .height)
+        frameRate = try c.decode(Int.self, forKey: .frameRate)
+        videoBitrate = try c.decode(Int.self, forKey: .videoBitrate)
+        codec = try c.decode(VideoCodec.self, forKey: .codec)
+        recordAudio = try c.decode(Bool.self, forKey: .recordAudio)
+        inactivityTimeout = try c.decode(TimeInterval.self, forKey: .inactivityTimeout)
+        minimumFreeBytes = try c.decode(Int64.self, forKey: .minimumFreeBytes)
+        debugOverlayEnabled = try c.decode(Bool.self, forKey: .debugOverlayEnabled)
+        lens = try c.decodeIfPresent(CameraLens.self, forKey: .lens) ?? .wide
     }
 
     /// The default configuration.

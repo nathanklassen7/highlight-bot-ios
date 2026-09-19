@@ -99,6 +99,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         rotation.withLock { $0 }
     }
 
+    var captureClock: CMClock {
+        session.synchronizationClock ?? CMClockGetHostTimeClock()
+    }
+
     /// Keeps the preview upright for whichever way the phone is held and
     /// publishes the matching capture angle. Idempotent per device.
     @MainActor
@@ -251,7 +255,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         // colour would push the session toward 10-bit 'x420' formats we don't want.
         session.automaticallyConfiguresCaptureDeviceForWideColor = false
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+        guard let device = Self.backCamera(for: config.lens) else {
             throw CaptureError.noCamera
         }
         let input = try AVCaptureDeviceInput(device: device)
@@ -400,7 +404,23 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         eventContinuation.yield(event)
     }
 
-    // MARK: - Format selection
+    // MARK: - Device & format selection
+
+    /// The back camera for `lens`. Falls back to the wide camera when the
+    /// device has no ultra-wide (older / SE models) so capture still works.
+    private static func backCamera(for lens: CameraLens) -> AVCaptureDevice? {
+        let wide = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        switch lens {
+        case .wide:
+            return wide
+        case .ultraWide:
+            if let ultra = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
+                return ultra
+            }
+            Log.capture.notice("Ultra-wide camera unavailable; using wide")
+            return wide
+        }
+    }
 
     private struct FormatChoice {
         let format: AVCaptureDevice.Format

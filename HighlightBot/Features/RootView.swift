@@ -53,8 +53,15 @@ struct RootView: View {
             applyOrientation(for: tab)
         }
         .onChange(of: container.sessionState.isRecording) { _, isRecording in
-            if isRecording { selectedTab = .record }
+            if isRecording {
+                selectedTab = .record
+            } else {
+                showLibraryIfRequested()
+            }
             applyOrientation(for: isRecording ? .record : selectedTab)
+        }
+        .onChange(of: container.pendingLibraryClip) { _, _ in
+            showLibraryIfRequested()
         }
     }
 
@@ -123,6 +130,14 @@ struct RootView: View {
         return selected ? Color(uiColor: .systemBackground) : .primary
     }
 
+    /// Library is created only when selected; wait until capture is not live so
+    /// the recording-tab lock does not yank us back to Record.
+    private func showLibraryIfRequested() {
+        guard container.pendingLibraryClip != nil else { return }
+        guard !container.sessionState.isRecording else { return }
+        selectedTab = .library
+    }
+
     private func applyOrientation(for tab: Tab) {
         if tab == .record {
             InterfaceOrientationLock.apply(.landscape, forcing: .landscape)
@@ -132,42 +147,20 @@ struct RootView: View {
     }
 }
 
-// MARK: - Shared screen padding
+// MARK: - Shared screen metrics
 
-/// One set of insets for tab chrome, Library, Settings, and the clip player.
+/// Insets screens apply to their own content (`.padding`), not to the scroll
+/// view or safe area, so backgrounds and scroll indicators run edge to edge.
 enum ScreenMetrics {
-    static let horizontal: CGFloat = 32
+    static let horizontal: CGFloat = 20
     /// Clears the floating tab pill; scroll views still draw behind it.
     static let top: CGFloat = 60
 }
 
-private struct ScreenPaddingModifier: ViewModifier {
-    var edges: Edge.Set
-
-    func body(content: Content) -> some View {
-        content
-            .contentMargins(.leading, leading, for: .scrollContent)
-            .contentMargins(.trailing, trailing, for: .scrollContent)
-            .contentMargins(.top, top, for: .scrollContent)
-            .padding(
-                EdgeInsets(
-                    top: 0,
-                    leading: leading,
-                    bottom: 0,
-                    trailing: trailing
-                )
-            )
-    }
-
-    private var leading: CGFloat { edges.contains(.leading) ? ScreenMetrics.horizontal : 0 }
-    private var trailing: CGFloat { edges.contains(.trailing) ? ScreenMetrics.horizontal : 0 }
-    private var top: CGFloat { edges.contains(.top) ? ScreenMetrics.top : 0 }
-}
-
-extension View {
-    /// Insets a screen using `ScreenMetrics` so portrait rounding and the tab bar
-    /// leave the same gap everywhere.
-    func screenPadding(_ edges: Edge.Set = [.horizontal, .top]) -> some View {
-        modifier(ScreenPaddingModifier(edges: edges))
-    }
+/// App-wide semantic colors. Adopt in new UI; existing screens can migrate later.
+enum AppPalette {
+    static let accent = Color(red: 0.20, green: 0.48, blue: 0.96)
+    static let confirm = Color(red: 0.18, green: 0.67, blue: 0.39)
+    static let danger = Color(red: 0.90, green: 0.22, blue: 0.24)
+    static let onFill = Color.white
 }

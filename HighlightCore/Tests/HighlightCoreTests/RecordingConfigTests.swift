@@ -79,9 +79,31 @@ struct RecordingConfigTests {
         var config = RecordingConfig.default
         config.codec = .hevc
         config.bufferSeconds = 30
+        config.lens = .ultraWide
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
         #expect(decoded == config)
+    }
+
+    @Test("decodes configs persisted before `lens` existed as wide")
+    func decodesWithoutLens() throws {
+        var object = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(RecordingConfig.default)
+        ) as! [String: Any]
+        object.removeValue(forKey: "lens")
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
+        #expect(decoded.lens == .wide)
+        #expect(decoded == .default)
+    }
+
+    @Test("camera lens labels and toggle")
+    func lensLabels() {
+        #expect(CameraLens.wide.toggled == .ultraWide)
+        #expect(CameraLens.ultraWide.toggled == .wide)
+        #expect(CameraLens.wide.shortLabel == "1×")
+        #expect(CameraLens.ultraWide.shortLabel == "0.5×")
+        #expect(CameraLens.allCases.map(\.id) == ["wide", "ultraWide"])
     }
 
     @Test("codec display names")
