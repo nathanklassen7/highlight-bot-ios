@@ -42,8 +42,10 @@ struct ClipPlayerScreen: View {
                     handleScreenTap()
                 }
 
+            // No full-rect content shape here: taps on empty areas fall through to
+            // the background layer above, which toggles the overlay. Taps on
+            // controls still land on the controls and reschedule the auto-hide.
             chromeOverlay
-                .contentShape(Rectangle())
                 .opacity(isOverlayVisible ? 1 : 0)
                 .allowsHitTesting(isOverlayVisible)
                 .accessibilityHidden(!isOverlayVisible)
@@ -69,6 +71,9 @@ struct ClipPlayerScreen: View {
                 overlayHideTask = nil
                 isOverlayVisible = true
             }
+        }
+        .onChange(of: isOverlayVisible) { _, visible in
+            if !visible { isSpeedMenuExpanded = false }
         }
         .onChange(of: isScrubbing) { _, scrubbing in
             if scrubbing {
@@ -235,44 +240,66 @@ struct ClipPlayerScreen: View {
         .background(.black.opacity(0.55), in: Capsule())
     }
 
+    /// Compact trigger showing the current rate. The rate options open in
+    /// `speedMenu`, overlaid above the bar, so the bar's width never changes.
     private var speedControl: some View {
-        HStack(spacing: 10) {
-            Button {
-                isSpeedMenuExpanded.toggle()
-            } label: {
+        Button {
+            isSpeedMenuExpanded.toggle()
+        } label: {
+            HStack(spacing: 6) {
                 Image(systemName: "tortoise.fill")
+                Text(percentLabel(for: rate))
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(isSpeedMenuExpanded ? Color.yellow : Color.white)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
-            .accessibilityValue(percentLabel(for: rate))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
+        .accessibilityValue(percentLabel(for: rate))
+        .overlay(alignment: .topLeading) {
+            if isSpeedMenuExpanded {
+                speedMenu
+                    // Bottom of the menu sits above the bar's top edge: the bar's
+                    // vertical padding (10) plus an 8pt gap.
+                    .alignmentGuide(.top) { $0[.bottom] + 18 }
+                    .transition(.scale(scale: 0.9, anchor: .bottomLeading).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
+    }
 
+    private var speedMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Self.playbackRates, id: \.self) { option in
                 let isSelected = option == rate
-                let isVisible = isSpeedMenuExpanded || isSelected
                 Button {
-                    if isSpeedMenuExpanded {
-                        applyRate(option)
-                    } else {
-                        isSpeedMenuExpanded = true
-                    }
+                    applyRate(option)
+                    isSpeedMenuExpanded = false
                 } label: {
-                    Text(percentLabel(for: option))
-                        .font(.footnote.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(isSelected && isSpeedMenuExpanded ? Color.yellow : Color.white)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .transaction { $0.animation = nil }
+                    HStack(spacing: 10) {
+                        Text(percentLabel(for: option))
+                            .font(.footnote.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(isSelected ? Color.yellow : Color.white)
+                            .frame(minWidth: 36, alignment: .leading)
+                        Image(systemName: "checkmark")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.yellow)
+                            .opacity(isSelected ? 1 : 0)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
                 }
-                .opacity(isVisible ? 1 : 0)
-                .frame(maxWidth: isVisible ? nil : 0, alignment: .leading)
-                .clipped()
-                .allowsHitTesting(isVisible)
-                .accessibilityHidden(!isVisible)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Playback speed \(percentLabel(for: option))")
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
+        .padding(.vertical, 4)
+        .fixedSize()
+        .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func percentLabel(for rate: Float) -> String {
@@ -306,11 +333,21 @@ struct ClipPlayerScreen: View {
         isPlaying = true
     }
 
+    /// Background tap toggles the overlay, whether playing or paused.
     private func handleScreenTap() {
-        if !isOverlayVisible {
-            isOverlayVisible = true
+        if isSpeedMenuExpanded {
+            isSpeedMenuExpanded = false
+            scheduleOverlayAutoHide()
+            return
         }
-        scheduleOverlayAutoHide()
+        if isOverlayVisible {
+            overlayHideTask?.cancel()
+            overlayHideTask = nil
+            isOverlayVisible = false
+        } else {
+            isOverlayVisible = true
+            scheduleOverlayAutoHide()
+        }
     }
 
     private func handlePlaybackEnded() {
@@ -380,6 +417,7 @@ struct ClipPlayerScreen: View {
         let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             MainActor.assumeIsolated {
+                let wasPlaying = isPlaying
                 isPlaying = player.timeControlStatus == .playing && player.rate != 0
                 guard !isScrubbing else { return }
                 currentTime = seconds(from: time)
@@ -387,7 +425,9 @@ struct ClipPlayerScreen: View {
                     let value = seconds(from: itemDuration)
                     if value > 0 { duration = value }
                 }
-                if !isLooping, duration > 0, currentTime >= duration - 0.05,
+                // Only on the playing → stopped transition, so a user-hidden overlay
+                // stays hidden while paused at the end.
+                if wasPlaying, !isLooping, duration > 0, currentTime >= duration - 0.05,
                    player.timeControlStatus != .playing || player.rate == 0 {
                     currentTime = duration
                     markPlaybackInactive()

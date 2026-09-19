@@ -24,13 +24,22 @@ enum PhotosSaver {
         guard status == .granted else { throw PhotosSaveError.permissionDenied }
 
         do {
-            try await PHPhotoLibrary.shared().performChanges {
-                _ = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
-            }
+            try await Self.addVideo(at: fileURL)
             Log.ui.info("Saved \(fileURL.lastPathComponent) to Photos")
         } catch {
             Log.ui.error("Save to Photos failed: \(String(describing: error))")
             throw PhotosSaveError.underlying(error.localizedDescription)
+        }
+    }
+
+    /// Photos runs the change block on its own queue and the block is not
+    /// `NS_SWIFT_SENDABLE` in the header. A plain closure formed in this
+    /// `@MainActor` type inherits main-actor isolation and the Swift 6
+    /// runtime traps when Photos invokes it off-main. Hence `nonisolated`
+    /// plus an explicit `@Sendable` block.
+    private nonisolated static func addVideo(at fileURL: URL) async throws {
+        try await PHPhotoLibrary.shared().performChanges { @Sendable in
+            _ = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
         }
     }
 }
