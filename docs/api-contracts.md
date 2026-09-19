@@ -516,7 +516,8 @@ enum AppDirectories {
     func newest() -> Clip?
     func clip(withID: UUID) -> Clip?
     func updateTags(_ clip: Clip, tags: [String]) throws        // replaces, normalized
-    func addTags(_ clips: [Clip], tags: [String]) throws        // bulk union
+    func applyTags(_ clips: [Clip], add: [String], remove: [String]) throws  // bulk: union `add`, strip `remove`
+    static func commonTags(of clips: [[String]]) -> [String]    // tags every clip shares; seeds the bulk picker
     func setStarred(_ clip: Clip, isStarred: Bool) throws
     func setStarred(_ clips: [Clip], isStarred: Bool) throws
     func usedTags() -> [String]                                 // distinct tags on at least one clip

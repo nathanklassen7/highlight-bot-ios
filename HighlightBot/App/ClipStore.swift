@@ -68,14 +68,29 @@ final class ClipStore {
         try context.save()
     }
 
-    /// Unions `tags` onto every clip in `clips` (bulk tag from select mode).
-    func addTags(_ clips: [Clip], tags: [String]) throws {
-        let additions = ClipTag.normalized(tags)
-        guard !additions.isEmpty else { return }
+    /// Bulk edit from select mode: unions `add` onto every clip and strips
+    /// `remove` from every clip. Other tags on each clip are kept.
+    func applyTags(_ clips: [Clip], add: [String], remove: [String]) throws {
+        let additions = ClipTag.normalized(add)
+        let removals = ClipTag.normalized(remove)
+        guard !additions.isEmpty || !removals.isEmpty else { return }
         for clip in clips {
-            clip.tags = ClipTag.merge(clip.tags, additions)
+            var tags = clip.tags
+            for tag in removals {
+                tags = ClipTag.removing(tag, from: tags)
+            }
+            clip.tags = ClipTag.merge(tags, additions)
         }
         try context.save()
+    }
+
+    /// Tags present on every clip in `clips` (case-insensitive). Empty if
+    /// `clips` is empty.
+    nonisolated static func commonTags(of clips: [[String]]) -> [String] {
+        guard let first = clips.first else { return [] }
+        return first.filter { tag in
+            clips.dropFirst().allSatisfy { ClipTag.contains($0, tag) }
+        }
     }
 
     func setStarred(_ clip: Clip, isStarred: Bool) throws {

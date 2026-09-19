@@ -80,12 +80,16 @@ struct LibraryScreen: View {
                 }
             }
             .sheet(isPresented: $showBulkTagPicker) {
+                // Capture the shared set when the sheet opens so the diff on
+                // Done is against what the user actually saw.
+                let common = commonSelectedTags
+                let count = selectedClips.count
                 TagPickerSheet(
-                    title: "Add Tags",
-                    initialSelection: [],
-                    footnote: "Added to \(selectedIDs.count) selected clip(s). Existing tags are kept."
+                    title: "Tag \(count) Clip\(count == 1 ? "" : "s")",
+                    initialSelection: common,
+                    footnote: "Shows tags all \(count) selected clips share. Adding applies to every clip; removing takes it off every clip. Tags only some clips have are left alone."
                 ) { tags in
-                    bulkAddTags(tags)
+                    bulkApplyTags(tags, common: common)
                 }
             }
             .confirmationDialog(
@@ -519,17 +523,28 @@ struct LibraryScreen: View {
         }
     }
 
-    private func bulkAddTags(_ tags: [String]) {
+    /// Tags every selected clip has; the bulk picker starts from these.
+    private var commonSelectedTags: [String] {
+        ClipStore.commonTags(of: selectedClips.map(\.tags))
+    }
+
+    /// Diff the picker result against the shared tags: new ones union onto
+    /// every selected clip, removed shared ones come off every selected clip.
+    /// Tags only some clips had are untouched.
+    private func bulkApplyTags(_ result: [String], common: [String]) {
         let targets = selectedClips
         guard !targets.isEmpty else { return }
+        let added = result.filter { !ClipTag.contains(common, $0) }
+        let removed = common.filter { !ClipTag.contains(result, $0) }
+        guard !added.isEmpty || !removed.isEmpty else { return }
         do {
-            try container.clipStore.addTags(targets, tags: tags)
+            try container.clipStore.applyTags(targets, add: added, remove: removed)
             if let lastID = container.lastClip?.id,
                let updated = targets.first(where: { $0.id == lastID }) {
                 container.lastClip = updated.record
             }
             let count = targets.count
-            statusMessage = "Tagged \(count) clip\(count == 1 ? "" : "s")"
+            statusMessage = "Updated tags on \(count) clip\(count == 1 ? "" : "s")"
         } catch {
             statusMessage = "Tags failed: \(error.localizedDescription)"
         }
