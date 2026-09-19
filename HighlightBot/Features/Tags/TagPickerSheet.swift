@@ -43,12 +43,10 @@ struct TagPickerSheet: View {
                     section("Sports") {
                         pillGrid(ClipTag.suggestedSports)
                     }
-                    if !previous.isEmpty {
-                        section("Previous") {
-                            pillGrid(previous)
-                        }
-                    }
                     section("Custom") {
+                        if !previous.isEmpty {
+                            pillGrid(previous, forgettable: true)
+                        }
                         customField
                     }
                     if let footnote {
@@ -108,7 +106,9 @@ struct TagPickerSheet: View {
         }
     }
 
-    private func pillGrid(_ tags: [String]) -> some View {
+    /// `forgettable` adds a long-press menu that removes the tag from the
+    /// remembered list (custom tags only).
+    private func pillGrid(_ tags: [String], forgettable: Bool = false) -> some View {
         TagFlowLayout(spacing: 8) {
             ForEach(tags, id: \.self) { tag in
                 let selected = ClipTag.contains(selection, tag)
@@ -129,6 +129,15 @@ struct TagPickerSheet: View {
                     .background(TagStyle.color(for: tag).opacity(selected ? 1 : 0.45), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    if forgettable {
+                        Button(role: .destructive) {
+                            forget(tag)
+                        } label: {
+                            Label("Forget \"\(tag)\"", systemImage: "trash")
+                        }
+                    }
+                }
                 .accessibilityLabel(tag)
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityHint(selected ? "Removes the tag" : "Adds the tag")
@@ -165,6 +174,15 @@ struct TagPickerSheet: View {
 
     private func remove(_ tag: String) {
         selection = ClipTag.removing(tag, from: selection)
+    }
+
+    /// Removes a custom tag from the suggestions. The current selection is
+    /// left alone so forgetting never silently edits the clip being tagged.
+    private func forget(_ tag: String) {
+        container.tagPreferences.forget(tag)
+        withAnimation(.easeInOut(duration: 0.15)) {
+            previous = ClipTag.removing(tag, from: previous)
+        }
     }
 
     private func addCustom() {

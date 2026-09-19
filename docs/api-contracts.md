@@ -527,13 +527,14 @@ enum AppDirectories {
     var activeTags: [String]                 // chosen on Record; AppContainer stamps these onto every saved clip
     private(set) var rememberedTags: [String] // every custom (non-sport) tag ever added, for the picker
     func remember(_ tags: [String])
+    func forget(_ tag: String)               // drop from rememberedTags; clips still using it are untouched
     func previousTags(usedOnClips: [String]) -> [String]   // remembered ∪ used ∪ active, minus sports, sorted
 }
 
 /// Shared tag UI (HighlightBot/Features/Tags/). One picker for Record, Library, and Player.
 struct TagPill: View        // colored capsule; TagStyle.color(for:) gives each suggested sport a fixed color, all custom tags share one
 struct TagPillRow: View     // up to `limit` pills + "+N"
-struct TagPickerSheet: View // sports (always) → previous custom tags → create custom; onSave([String]) on Done
+struct TagPickerSheet: View // Sports (always) → Custom (previous tags, long-press to forget, + new-tag field); onSave([String]) on Done
 
 /// DI container. Builds everything once; environment object for the app.
 @MainActor @Observable final class AppContainer {

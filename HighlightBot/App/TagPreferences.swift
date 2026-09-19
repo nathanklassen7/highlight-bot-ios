@@ -52,7 +52,13 @@ final class TagPreferences {
         rememberedTags = ClipTag.sortedForDisplay(merged)
     }
 
-    /// Non-sport tags to offer under "Previous" in the picker: remembered
+    /// Drops `tag` from `rememberedTags`. Clips that still carry it are not
+    /// changed, so it reappears in the picker while any clip uses it.
+    func forget(_ tag: String) {
+        rememberedTags = ClipTag.removing(tag, from: rememberedTags)
+    }
+
+    /// Non-sport tags to offer under "Custom" in the picker: remembered
     /// tags plus whatever is on clips or active right now.
     func previousTags(usedOnClips: [String]) -> [String] {
         let all = ClipTag.merge(ClipTag.merge(rememberedTags, usedOnClips), activeTags)

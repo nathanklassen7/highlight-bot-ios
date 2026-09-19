@@ -5,6 +5,10 @@ import SwiftUI
 /// Grid of saved clips, newest first. Tap to play; long-press for Share,
 /// Save to Photos, and Delete. Select mode toggles membership in a set of
 /// clip IDs (range-drag can later union a contiguous slice into the same set).
+private enum LibraryMotion {
+    static let clipSelection = Animation.easeInOut(duration: 0.12)
+}
+
 struct LibraryScreen: View {
     @Environment(AppContainer.self) private var container
     @Query(sort: \Clip.createdAt, order: .reverse) private var clips: [Clip]
@@ -268,7 +272,7 @@ struct LibraryScreen: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isSelecting ? "Done" : "Select clips")
         }
-        .animation(.easeInOut(duration: 0.2), value: isSelecting)
+        .animation(LibraryMotion.clipSelection, value: isSelecting)
     }
 
     private var bulkTagFAB: some View {
@@ -425,10 +429,12 @@ struct LibraryScreen: View {
     }
 
     private func toggleSelected(_ id: UUID) {
-        if selectedIDs.contains(id) {
-            selectedIDs.remove(id)
-        } else {
-            selectedIDs.insert(id)
+        withAnimation(LibraryMotion.clipSelection) {
+            if selectedIDs.contains(id) {
+                selectedIDs.remove(id)
+            } else {
+                selectedIDs.insert(id)
+            }
         }
     }
 
@@ -607,6 +613,7 @@ struct ClipCell: View {
             .font(.caption)
             .lineLimit(1)
         }
+        .animation(LibraryMotion.clipSelection, value: isSelected)
         .accessibilityElement(children: .combine)
     }
 
