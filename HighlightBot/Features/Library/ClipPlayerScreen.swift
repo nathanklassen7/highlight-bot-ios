@@ -1,4 +1,5 @@
 import AVFoundation
+import BallTracking
 import HighlightCore
 import SwiftUI
 import UIKit
@@ -35,6 +36,12 @@ struct ClipPlayerScreen: View {
             PlayerLayerView(player: player)
                 .ignoresSafeArea()
 
+            if container.trackingPreferences.playerOverlayEnabled,
+               case .ready(let track) = container.clipTracks.status(for: record) {
+                BallTrackOverlay(track: track, player: player)
+                    .ignoresSafeArea()
+            }
+
             Color.clear
                 .contentShape(Rectangle())
                 .ignoresSafeArea()
@@ -52,10 +59,14 @@ struct ClipPlayerScreen: View {
                 })
         }
         .statusBarHidden(true)
-        .onAppear { startPlayback() }
+        .onAppear {
+            startPlayback()
+            container.clipTracks.loadCached(for: record)
+        }
         .onDisappear {
             overlayHideTask?.cancel()
             overlayHideTask = nil
+            container.clipTracks.cancel(record)
             removeTimeObserver()
             player.pause()
             looper?.disableLooping()
@@ -136,6 +147,8 @@ struct ClipPlayerScreen: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, 16)
 
+                trackingStatusPill
+
                 Spacer()
 
                 VStack(spacing: 10) {
@@ -209,6 +222,8 @@ struct ClipPlayerScreen: View {
 
             speedControl
 
+            trackingButton
+
             Spacer()
 
             ShareLink(item: record.fileURL) {
@@ -277,6 +292,72 @@ struct ClipPlayerScreen: View {
 
     private func percentLabel(for rate: Float) -> String {
         "\(Int((rate * 100).rounded()))%"
+    }
+
+    private var trackingButton: some View {
+        let status = container.clipTracks.status(for: record)
+        let overlayOn = container.trackingPreferences.playerOverlayEnabled
+        return Button {
+            handleTrackingTap(status: status)
+        } label: {
+            switch status {
+            case .analyzing:
+                ProgressView().tint(.white)
+            case .ready where overlayOn:
+                Label("Hide ball tracking", systemImage: "figure.table.tennis")
+                    .foregroundStyle(.green)
+            default:
+                Label("Show ball tracking", systemImage: "figure.table.tennis")
+            }
+        }
+        .accessibilityLabel(trackingAccessibilityLabel(status: status, overlayOn: overlayOn))
+    }
+
+    private func handleTrackingTap(status: ClipTrackStatus) {
+        switch status {
+        case .analyzing:
+            container.clipTracks.cancel(record)
+            statusMessage = "Ball tracking cancelled"
+        case .ready:
+            container.trackingPreferences.playerOverlayEnabled.toggle()
+        case .none, .failed:
+            container.trackingPreferences.playerOverlayEnabled = true
+            container.clipTracks.analyze(record)
+        }
+    }
+
+    private func trackingAccessibilityLabel(status: ClipTrackStatus, overlayOn: Bool) -> String {
+        switch status {
+        case .analyzing: "Cancel ball tracking"
+        case .ready: overlayOn ? "Hide ball tracking" : "Show ball tracking"
+        case .none, .failed: "Track the ball in this clip"
+        }
+    }
+
+    @ViewBuilder
+    private var trackingStatusPill: some View {
+        switch container.clipTracks.status(for: record) {
+        case .analyzing(let fraction):
+            HStack(spacing: 8) {
+                ProgressView(value: fraction).frame(width: 120).tint(.white)
+                Text("Tracking ball… \(Int(fraction * 100))%")
+                    .monospacedDigit()
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.6), in: Capsule())
+        case .failed(let message):
+            Text("Ball tracking failed: \(message)")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.red.opacity(0.85), in: Capsule())
+        case .none, .ready:
+            EmptyView()
+        }
     }
 
     private var scrubDuration: Double {
