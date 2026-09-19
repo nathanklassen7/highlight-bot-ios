@@ -19,6 +19,8 @@ struct Lab {
       mask    --input clip.mp4 --out DIR [--threshold 60] [--dump-frames 18,200]
               Writes DIR/mask.mp4: the two-frame motion mask (white on black), stored orientation.
               --dump-frames also writes those frames' raw mask planes as lossless PGM.
+      sizes   --input clip.mp4 --out DIR [--threshold 60] [--min-area 20] [--max-area 800] [--side-by-side]
+              Writes DIR/sizes.mp4: mask components coloured by area — white kept, red too large, blue too small.
       candidates --input clip.mp4 --out DIR [--threshold 60] [--max-area 300] [--max-candidates 40]
               Writes DIR/candidates.mp4 (magenta circle per motion candidate) and DIR/candidates.jsonl
               (frame, t, x, y, radius, area, arrivals, fill, confidence; stored-frame pixels).
@@ -43,6 +45,7 @@ struct Lab {
             case "extract": try await ExtractCommand(options: options).run()
             case "mask": try await MaskCommand(options: options).run()
             case "candidates": try await CandidatesCommand(options: options).run()
+            case "sizes": try await SizesCommand(options: options).run()
             case "audit": try await AuditCommand(options: options).run()
             case "score": try ScoreCommand(options: options).run()
             case "help", "--help", "-h": print(usage)

@@ -15,6 +15,10 @@ public struct MotionMask: Sendable {
     public struct Config: Sendable, Equatable {
         /// Minimum full-range luma difference for a pixel to count as moving (strict `>`).
         public var threshold: UInt8 = 60
+        /// Side of the square kernel of a morphological closing (dilate then erode) applied
+        /// after the 3×3 dilation. Joins blobs closer than about this many pixels — a
+        /// blurred fast ball fragments into several pieces otherwise. 0 or 1 disables it.
+        public var closing: Int = 0
         public init() {}
         public static let `default` = Config()
     }
@@ -107,6 +111,7 @@ public struct MotionMask: Sendable {
 
         thresholdDifference()
         dilate()
+        if config.closing > 1 { close(kernel: config.closing | 1) }
         hasMask = true
         return true
     }
@@ -137,6 +142,20 @@ public struct MotionMask: Sendable {
                         out[i] = d > threshold ? 255 : 0
                     }
                 }
+            }
+        }
+    }
+
+    /// Closing: k×k max then k×k min, `pixels` → `scratch` → `pixels`.
+    private mutating func close(kernel k: Int) {
+        let w = width, h = height
+        pixels.withUnsafeMutableBufferPointer { a in
+            scratch.withUnsafeMutableBufferPointer { b in
+                var bufA = vImage_Buffer(data: a.baseAddress, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w)
+                var bufB = vImage_Buffer(data: b.baseAddress, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w)
+                guard vImageMax_Planar8(&bufA, &bufB, nil, 0, 0, vImagePixelCount(k), vImagePixelCount(k), vImage_Flags(kvImageNoFlags)) == kvImageNoError,
+                      vImageMin_Planar8(&bufB, &bufA, nil, 0, 0, vImagePixelCount(k), vImagePixelCount(k), vImage_Flags(kvImageNoFlags)) == kvImageNoError
+                else { return }
             }
         }
     }

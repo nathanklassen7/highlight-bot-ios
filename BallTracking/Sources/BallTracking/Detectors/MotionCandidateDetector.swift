@@ -18,14 +18,27 @@ import Foundation
 /// `detect`/`reset`, which callers serialise (see `BallDetector`).
 public final class MotionCandidateDetector: BallDetector, @unchecked Sendable {
     public struct Config: Sendable, Equatable {
-        public var mask = MotionMask.Config()
+        /// Threshold 90 and a 5×5 closing were chosen by the user from `balltrack-lab sizes`
+        /// renders: 90 halves the outline fragments while keeping the blurred ball; the
+        /// closing rejoins a fast ball's streak, which otherwise splits into pieces.
+        public var mask: MotionMask.Config = {
+            var config = MotionMask.Config()
+            config.threshold = 90
+            config.closing = 5
+            return config
+        }()
         /// Component area bounds in full-resolution pixels, measured on the dilated mask.
         /// One moving pixel dilates to 9 px, so 20 requires a few genuine pixels; the far
         /// ball on the reference clip is ≥ ~35 px dilated, the near ball up to ~300.
         public var minArea = 20
         public var maxArea = 800
-        /// Bounding-box long/short side. Streaks are allowed; walls and limbs are not.
-        public var maxAspect = 4.0
+        /// Shape filters, all reviewed on the colour-coded `sizes` render. A fast ball's
+        /// motion streak is long (aspect up to ~5) and tapered (fill ~0.3) but always
+        /// thick (area / longest side ≥ 5 px); a player's outline sliver is 2–3 px thick
+        /// however long it is. Thickness is what separates them.
+        public var maxAspect = 6.0
+        public var minFill = 0.25
+        public var minThickness = 5.0
         /// Kept per frame. Trimmed by area plausibility (closest to `idealArea` in log
         /// space), never by brightness. On the reference clip p90 is ~59, so this binds
         /// only on the busiest swings.
@@ -122,6 +135,7 @@ public final class MotionCandidateDetector: BallDetector, @unchecked Sendable {
             let aspect = max(bw, bh) / min(bw, bh)
             guard aspect <= config.maxAspect else { return }
             let fill = Double(component.area) / (bw * bh)
+            guard fill >= config.minFill, Double(component.area) / max(bw, bh) >= config.minThickness else { return }
 
             let useArrivals = component.arrivals >= config.minArea
             let cx: Double, cy: Double, sizeArea: Double
