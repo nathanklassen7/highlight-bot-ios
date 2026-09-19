@@ -195,17 +195,24 @@ Rough total: 2.5–3 weeks of focused work for a solid MVP.
 
 ---
 
-## 6. Risks and open questions
+## 6. Decided defaults
 
-**Risks**
+These were open questions during planning and are now settled. Treat them as requirements, not suggestions.
+
+| Decision | Value |
+| --- | --- |
+| Default buffer length *n* | 20 s (matches the Pi); user-selectable 10 / 20 / 30 / 60 s |
+| Orientation | Landscape-only for MVP |
+| Minimum iOS | 17.2 (required for `AVCaptureEventInteraction`) |
+| Audio | Recorded by default (AAC); mic permission requested at first launch |
+| Clip container | `.mp4`, H.264 video + AAC audio, for maximum cross-platform share compatibility; HEVC available as a setting |
+| Capture defaults | 1080p, 60 fps, ~10 Mbps |
+| Segment interval | 5 s (single config constant; may drop to 1–2 s if the Phase 0 spike requires it) |
+
+## 7. Risks
+
+- `flushSegment()` semantics with fixed segment intervals: the spike exists to settle this.
 - `flushSegment()` semantics with fixed segment intervals: the spike exists to settle this.
 - Sharing fMP4 directly is not universally accepted; the plan always passes through `AVAssetExportSession` passthrough to a flat MP4. If passthrough fails for some format combination, a re-encode fallback costs ~real-time duration.
 - iOS suspends capture in the background, so the app must be foreground with the screen on. This is inherent; the dimmed-screen mode is the mitigation.
 - Thermal throttling in direct sun at 1080p60 is likely over long sessions; the degrade path (60→30 fps) must be tested outdoors, not just assumed.
-
-**Decisions to confirm**
-1. Default *n*: 20 s to match the Pi?
-2. Landscape-only for MVP?
-3. Minimum iOS 17.2 acceptable (loses `AVCaptureEventInteraction` below that)?
-4. Record audio by default? (Adds mic permission and ~5% file size; assumed yes.)
-5. Clip container `.mp4` (H.264/AAC) for maximum share compatibility, or `.mov`?
