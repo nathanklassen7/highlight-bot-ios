@@ -63,8 +63,9 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
-        # Set your Apple Developer team in Xcode: target HighlightBot -> Signing & Capabilities -> Team.
-        DEVELOPMENT_TEAM: ""
+        # Apple Developer team used for automatic signing. Change here (not in Xcode) so
+        # `xcodegen generate` keeps it.
+        DEVELOPMENT_TEAM: 5973D42XN8
         PRODUCT_BUNDLE_IDENTIFIER: com.highlightbot.app
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"

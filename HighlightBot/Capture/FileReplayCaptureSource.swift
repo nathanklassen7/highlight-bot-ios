@@ -163,6 +163,9 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     /// Replay cannot change the file's frame rate.
     func setFrameRate(_ fps: Int) async {}
 
+    /// Replayed files are already upright.
+    var captureRotationAngle: CGFloat { 0 }
+
     // MARK: - Replay loop (dedicated thread)
 
     private func isStopRequested() -> Bool {

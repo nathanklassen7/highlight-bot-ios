@@ -183,6 +183,17 @@ final class AppContainer {
 
     // MARK: - Actions
 
+    /// Run the camera so the viewfinder is live before recording starts.
+    /// Safe to call repeatedly. Failures surface in `errorMessage`.
+    func startPreview() async {
+        do {
+            try await pipeline.startPreview()
+        } catch {
+            Log.ui.error("Preview failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Save the last `selectedClipSeconds` seconds. No-op unless recording.
     func saveClipNow() {
         emit(TriggerEvent(source: .ui, kind: .saveClip(seconds: nil)))

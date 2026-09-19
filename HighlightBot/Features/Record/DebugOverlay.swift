@@ -24,6 +24,8 @@ struct DebugOverlay: View {
         captured   \(metrics.capturedFrames)
         dropped    \(metrics.droppedFrames)
         analyzerDr \(metrics.analyzerDroppedFrames)
+        skipVideo  \(metrics.skippedVideoAppends)
+        skipAudio  \(metrics.skippedAudioAppends)
         buffered   \(format(metrics.bufferedSeconds, 1)) s
         seg write  \(format(metrics.lastSegmentWriteMillis, 1)) ms
         export     \(format(metrics.lastExportSeconds, 2)) s

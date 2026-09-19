@@ -43,4 +43,8 @@ protocol CaptureSource: AnyObject {
     func stop() async
     /// Lower or restore the frame rate (thermal). No-op if unsupported.
     func setFrameRate(_ fps: Int) async
+    /// Rotation, in degrees, that makes recorded video horizon-level given the
+    /// data output delivers frames in the sensor's native orientation. Read at
+    /// recording start and stamped into the file as metadata (no per-frame work).
+    var captureRotationAngle: CGFloat { get }
 }

@@ -30,6 +30,8 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     private let config: RecordingConfig
     private let queue: DispatchQueue
     private let onSegment: @Sendable (IncomingSegment) -> Void
+    /// Display rotation stamped into the video track (degrees). Metadata only.
+    private let videoRotationAngle: CGFloat
 
     private let lock = NSLock()
     // All of the following are guarded by `lock`.
@@ -41,16 +43,19 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     private var lastVideoPTS: CMTime = .invalid
     private var sessionID: SessionID?
     private var mediaSeq = 0
-    private var skippedAppendCount = 0
+    private var skippedVideoAppendCount = 0
+    private var skippedAudioAppendCount = 0
     private var didLogFailure = false
     private var lastWriteMillis: Double = 0
     private var lastSegmentSeq = -1
 
     init(config: RecordingConfig,
          queue: DispatchQueue,
+         videoRotationAngle: CGFloat = 0,
          onSegment: @escaping @Sendable (IncomingSegment) -> Void) {
         self.config = config
         self.queue = queue
+        self.videoRotationAngle = videoRotationAngle
         self.onSegment = onSegment
         super.init()
     }
@@ -81,11 +86,23 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         return lastSegmentSeq
     }
 
-    /// Appends skipped because the input was not ready. Non-zero means the
-    /// encoder is falling behind; should stay 0 at the target bitrate.
+    /// Appends skipped because an input was not ready (video + audio).
     var skippedAppends: Int {
         lock.lock(); defer { lock.unlock() }
-        return skippedAppendCount
+        return skippedVideoAppendCount + skippedAudioAppendCount
+    }
+
+    /// Video appends skipped. Non-zero means the encoder is falling behind;
+    /// should stay 0 at the target bitrate.
+    var skippedVideoAppends: Int {
+        lock.lock(); defer { lock.unlock() }
+        return skippedVideoAppendCount
+    }
+
+    /// Audio appends skipped. Every skip is an audible gap (click/scratch).
+    var skippedAudioAppends: Int {
+        lock.lock(); defer { lock.unlock() }
+        return skippedAudioAppendCount
     }
 
     // MARK: - Lifecycle
@@ -104,6 +121,9 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
 
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: Self.videoSettings(for: config))
         video.expectsMediaDataInRealTime = true
+        if videoRotationAngle != 0 {
+            video.transform = CGAffineTransform(rotationAngle: videoRotationAngle * .pi / 180)
+        }
         guard newWriter.canAdd(video) else {
             Log.recorder.error("Writer rejected video input settings")
             return
@@ -131,7 +151,8 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lastVideoPTS = .invalid
         mediaSeq = 0
         lastSegmentSeq = -1
-        skippedAppendCount = 0
+        skippedVideoAppendCount = 0
+        skippedAudioAppendCount = 0
         didLogFailure = false
         Log.recorder.info("Recorder prepared session \(newSessionID.description, privacy: .public) (\(self.config.width)x\(self.config.height)@\(self.config.frameRate) \(self.config.codec.rawValue, privacy: .public))")
     }
@@ -265,7 +286,7 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
                 logFailureOnce(writer, context: "appendVideo")
             }
         } else {
-            skippedAppendCount += 1
+            skippedVideoAppendCount += 1
         }
     }
 
@@ -277,7 +298,10 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
                 logFailureOnce(writer, context: "appendAudio")
             }
         } else {
-            skippedAppendCount += 1
+            skippedAudioAppendCount += 1
+            if skippedAudioAppendCount == 1 || skippedAudioAppendCount % 50 == 0 {
+                Log.recorder.notice("Audio input not ready; skipped \(self.skippedAudioAppendCount) audio buffers so far (audible gap)")
+            }
         }
     }
 

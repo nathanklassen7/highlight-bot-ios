@@ -48,6 +48,12 @@ struct RecordScreen: View {
                 container.permissions.refresh()
             }
         }
+        // Keep the viewfinder live whenever we may use the camera: on appear,
+        // after permissions are granted, and after returning to the foreground.
+        .task(id: previewKey) {
+            guard permissionsSatisfied, scenePhase != .background else { return }
+            await container.startPreview()
+        }
         .task(id: container.errorMessage) {
             guard container.errorMessage != nil else { return }
             try? await Task.sleep(for: .seconds(4))
@@ -273,6 +279,11 @@ struct RecordScreen: View {
     }
 
     // MARK: - Helpers
+
+    /// Changes whenever a preview (re)start might be needed.
+    private var previewKey: String {
+        "\(permissionsSatisfied)-\(scenePhase == .background)"
+    }
 
     private var permissionsSatisfied: Bool {
         #if targetEnvironment(simulator)

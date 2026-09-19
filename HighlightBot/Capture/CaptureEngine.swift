@@ -3,6 +3,7 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import QuartzCore
+import os
 import OSLog
 import HighlightCore
 
@@ -55,6 +56,13 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
 
     private var observers: [NSObjectProtocol] = []
 
+    /// Preview orientation state. Everything here is touched only on the main
+    /// actor; `rotation` publishes the capture angle for other queues.
+    @MainActor private weak var previewLayer: AVCaptureVideoPreviewLayer?
+    @MainActor private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    @MainActor private var rotationObservation: NSKeyValueObservation?
+    private let rotation = OSAllocatedUnfairLock<CGFloat>(initialState: 0)
+
     init() {
         let (stream, continuation) = AsyncStream.makeStream(of: CaptureEvent.self, bufferingPolicy: .bufferingNewest(16))
         events = stream
@@ -75,14 +83,52 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     func makePreviewLayer() -> CALayer {
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
-        // VERIFY: the preview connection exists once the session has a video input.
-        // Angle 0 == landscape-right (home indicator on the right). If the UI supports
-        // landscape-left too, the App layer should set 180 on this connection when the
-        // interface rotates; recorded output stays at 0 regardless.
-        if let connection = layer.connection, connection.isVideoRotationAngleSupported(0) {
-            connection.videoRotationAngle = 0
+        previewLayer = layer
+        // The preview connection only exists once the session has a video input.
+        // If we are already configured, wire orientation now; otherwise
+        // `configureOnQueue` does it as soon as the device is chosen.
+        queue.async { [weak self] in
+            guard let self, let device = self.videoDevice else { return }
+            nonisolated(unsafe) let chosenDevice = device
+            Task { @MainActor in self.installRotationCoordinator(device: chosenDevice) }
         }
         return layer
+    }
+
+    var captureRotationAngle: CGFloat {
+        rotation.withLock { $0 }
+    }
+
+    /// Keeps the preview upright for whichever way the phone is held and
+    /// publishes the matching capture angle. Idempotent per device.
+    @MainActor
+    private func installRotationCoordinator(device: AVCaptureDevice) {
+        if let existing = rotationCoordinator, existing.device == device, previewLayer != nil {
+            applyPreviewRotation(existing.videoRotationAngleForHorizonLevelPreview)
+            return
+        }
+        rotationObservation?.invalidate()
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotationCoordinator = coordinator
+        applyPreviewRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
+        let initialCapture = coordinator.videoRotationAngleForHorizonLevelCapture
+        rotation.withLock { $0 = initialCapture }
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coordinator, _ in
+            let preview = coordinator.videoRotationAngleForHorizonLevelPreview
+            let capture = coordinator.videoRotationAngleForHorizonLevelCapture
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.applyPreviewRotation(preview)
+                self.rotation.withLock { $0 = capture }
+            }
+        }
+    }
+
+    @MainActor
+    private func applyPreviewRotation(_ angle: CGFloat) {
+        guard let connection = previewLayer?.connection,
+              connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
     }
 
     func setConsumer(_ consumer: (any SampleConsumer)?) {
@@ -197,6 +243,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         session.addInput(input)
         videoDevice = device
         videoDeviceInput = input
+        // AVCaptureDevice is safe to reference from another thread; the compiler
+        // just cannot prove it.
+        nonisolated(unsafe) let chosenDevice = device
+        Task { @MainActor [weak self] in self?.installRotationCoordinator(device: chosenDevice) }
 
         guard let choice = Self.chooseFormat(for: device, config: config) else {
             throw CaptureError.noSuitableFormat
@@ -221,9 +271,9 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         videoOutput = video
 
         if let connection = video.connection(with: .video) {
-            // VERIFY: iOS 17 videoRotationAngle. 0° == AVCaptureVideoOrientation.landscapeRight,
-            // i.e. the phone held landscape with the home indicator on the right. This is
-            // the back camera's native orientation, so no rotation work happens per frame.
+            // 0° is the back camera's native orientation (landscape, home indicator on
+            // the right), so no per-frame rotation happens. Orientation for the file is
+            // applied as writer metadata from `captureRotationAngle` instead.
             if connection.isVideoRotationAngleSupported(0) {
                 connection.videoRotationAngle = 0
             }
@@ -263,12 +313,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     private func activateAudioSessionIfNeeded() throws {
         guard config?.recordAudio == true, audioDeviceInput != nil else { return }
         let audioSession = AVAudioSession.sharedInstance()
-        // VERIFY: `.allowBluetoothHFP` is the SDK 26 name (available since iOS 1.0 per the
-        // header); `.allowBluetooth` is marked deprecated since iOS 8 and would warn. If the
-        // integrator builds with an older SDK, swap back to `.allowBluetooth`. Trade-off:
-        // with AirPods connected this routes the mic to the headset (HFP quality). Drop the
-        // option if court-side audio from the built-in mic is preferred.
-        try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        // Built-in mic only. Allowing Bluetooth HFP would route the microphone through
+        // any connected headset/watch/car at narrowband quality, which sounds like loud
+        // scratching when the link is marginal. Court-side audio wants the phone mic.
+        try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker])
         try audioSession.setActive(true)
     }
 
