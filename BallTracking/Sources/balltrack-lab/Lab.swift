@@ -6,9 +6,14 @@ struct Lab {
     balltrack-lab — run the HighlightBot ball tracker against a movie file.
 
     Commands:
-      run     --input clip.mp4 --out DIR [--detector vision|luma|default] [--no-annotate]
+      run     --input clip.mp4 --out DIR [--detector vision|luma|motion|default] [--no-annotate] [--debug]
               [--trajectory-length N] [--min-luma N] [--min-motion N] [--max-area N]
+              [--threshold N] [--max-candidates N] [--inlier-radius PX] [--min-inliers N] [--window N]
               Writes DIR/track.json, DIR/summary.json, DIR/annotated.mp4 and prints a summary.
+              --debug also writes DIR/debug.mp4, a 2x2 mosaic: source | mask / candidates | track.
+      audit   --track DIR/track.json --input clip.mp4 --out DIR [--frames 12]
+              Zoom audit: crops 80x45 px around the reported position on evenly spaced
+              .tracking frames, 6x nearest-neighbour, tiled 4x3 → DIR/audit.png. Look at it.
       extract --input clip.mp4 --out DIR [--every N] [--start SEC] [--end SEC]
               Writes PNG frames named fNNNNN_tSS.SSS.png for labelling.
       mask    --input clip.mp4 --out DIR [--threshold 60] [--dump-frames 18,200]
@@ -38,6 +43,7 @@ struct Lab {
             case "extract": try await ExtractCommand(options: options).run()
             case "mask": try await MaskCommand(options: options).run()
             case "candidates": try await CandidatesCommand(options: options).run()
+            case "audit": try await AuditCommand(options: options).run()
             case "score": try ScoreCommand(options: options).run()
             case "help", "--help", "-h": print(usage)
             default:

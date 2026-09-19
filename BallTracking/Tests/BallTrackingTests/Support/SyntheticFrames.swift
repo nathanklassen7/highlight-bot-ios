@@ -10,6 +10,9 @@ enum SyntheticFrames {
         var center: CGPoint   // pixels
         var radius: Double    // pixels
         var luma: UInt8
+        /// Chroma written at (x/2, y/2) for every luma pixel inside the disc. 128 is neutral (white/grey).
+        var cb: UInt8 = 128
+        var cr: UInt8 = 128
     }
 
     static func make420v(width: Int, height: Int, background: UInt8 = 40, discs: [Disc] = []) -> CVPixelBuffer {
@@ -29,6 +32,11 @@ enum SyntheticFrames {
         for row in 0..<height {
             memset(yBase + row * yStride, Int32(background), width)
         }
+        let cbcrBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)!.assumingMemoryBound(to: UInt8.self)
+        let cbcrStride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
+        for row in 0..<(height / 2) {
+            memset(cbcrBase + row * cbcrStride, 128, width) // interleaved Cb,Cr: width/2 pairs = width bytes
+        }
         for disc in discs {
             let r2 = disc.radius * disc.radius
             let minY = max(0, Int(disc.center.y - disc.radius) - 1)
@@ -42,15 +50,12 @@ enum SyntheticFrames {
                     let dy = Double(y) + 0.5 - disc.center.y
                     if dx * dx + dy * dy <= r2 {
                         yBase[y * yStride + x] = disc.luma
+                        let c = (y / 2) * cbcrStride + (x / 2) * 2
+                        cbcrBase[c] = disc.cb
+                        cbcrBase[c + 1] = disc.cr
                     }
                 }
             }
-        }
-
-        let cbcrBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)!.assumingMemoryBound(to: UInt8.self)
-        let cbcrStride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
-        for row in 0..<(height / 2) {
-            memset(cbcrBase + row * cbcrStride, 128, width) // interleaved Cb,Cr: width/2 pairs = width bytes
         }
         return pixelBuffer
     }

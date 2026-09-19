@@ -2,9 +2,9 @@ import AVFoundation
 import BallTracking
 import SwiftUI
 
-/// Draws the tracked ball and a short trail over a `VideoPlayer`, following the
-/// player's current time every display frame. Assumes aspect-fit video, which is
-/// what `VideoPlayer` renders, so the video rect is `AVMakeRect` over our bounds.
+/// Draws the tracked ball and a short trail over the clip player, following the
+/// player's current time every display frame. Assumes aspect-fit video, matching
+/// the player layer, so the video rect is `AVMakeRect` over our bounds.
 struct BallTrackOverlay: View {
     let track: BallTrack
     let player: AVPlayer

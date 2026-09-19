@@ -32,6 +32,24 @@ struct RunCommand {
         let detectorArg = options.string("detector") ?? "default"
         let runner = try makeRunner(detectorArg)
 
+        let debugWriter: DebugMosaicWriter?
+        if options.flag("debug") {
+            let clip = try await ClipFrames(url: input)
+            let debugURL = outDir.appending(path: "debug.mp4")
+            debugWriter = try DebugMosaicWriter(output: debugURL, width: clip.width, height: clip.height)
+            print("Writing debug mosaic to \(debugURL.path)…")
+        } else {
+            debugWriter = nil
+        }
+        // Keep the last fitter state so the flight segments can be written out.
+        let lastFitter = OSAllocatedUnfairLock<TrajectoryFitter?>(initialState: nil)
+        let onFrame: @Sendable (ClipTrackFrameEvent) throws -> Void = { event in
+            if let fitter = event.stage as? TrajectoryFitter {
+                lastFitter.withLock { $0 = fitter }
+            }
+            try debugWriter?.append(event)
+        }
+
         print("Analysing \(input.lastPathComponent) with \(runner.detectorName)…")
         let lastPrinted = OSAllocatedUnfairLock(initialState: -1)
         let result = try await runner.run(url: input, progress: { progress in
@@ -44,7 +62,18 @@ struct RunCommand {
             if shouldPrint {
                 print("  \(percent)% (\(progress.framesDone) frames)")
             }
-        }, isCancelled: { false })
+        }, isCancelled: { false }, onFrame: onFrame)
+        try debugWriter?.finish()
+
+        if let fitter = lastFitter.withLock({ $0 }) {
+            let segmentsURL = outDir.appending(path: "segments.json")
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(fitter.segments).write(to: segmentsURL)
+            let kinds = Dictionary(grouping: fitter.segments, by: \.breakKind).mapValues(\.count)
+            print("flights: \(fitter.segments.count) closed" + (fitter.currentModel == nil ? "" : " + 1 open")
+                  + "  breaks: " + kinds.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: " "))
+        }
 
         let track = result.track
         let encoder = JSONEncoder()
@@ -86,8 +115,18 @@ struct RunCommand {
             config.maxArea = options.int("max-area", default: config.maxArea)
             let lumaConfig = config
             return ClipTrackRunner(detectorName: "luma") { _ in LumaBlobDetector(config: lumaConfig) }
+        case "motion":
+            let detectorConfig = try CandidatesCommand.detectorConfig(options)
+            var fitterConfig = TrajectoryFitterConfig()
+            fitterConfig.inlierRadius = options.double("inlier-radius", default: fitterConfig.inlierRadius)
+            fitterConfig.minInliers = options.int("min-inliers", default: fitterConfig.minInliers)
+            fitterConfig.windowFrames = options.int("window", default: fitterConfig.windowFrames)
+            let fitter = fitterConfig
+            return ClipTrackRunner(detectorName: "motion",
+                                   makeDetector: { _ in MotionCandidateDetector(config: detectorConfig) },
+                                   makeStage: { size in TrajectoryFitter(config: fitter, imageSize: size) })
         default:
-            throw LabError.usage("--detector must be vision, luma, or default")
+            throw LabError.usage("--detector must be vision, luma, motion, or default")
         }
     }
 

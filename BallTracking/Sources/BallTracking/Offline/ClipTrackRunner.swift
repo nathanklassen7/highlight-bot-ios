@@ -32,32 +32,57 @@ public enum ClipTrackError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Decodes a movie file frame by frame and runs a detector plus `BallTracker`
+/// What the runner saw and decided for one frame, for debugging tools. Delivered
+/// synchronously on the decode queue; `pixelBuffer` is only valid during the call.
+/// `@unchecked Sendable` for that reason — nothing here is retained past the callback.
+public struct ClipTrackFrameEvent: @unchecked Sendable {
+    public let index: Int
+    public let time: CMTime
+    /// The decoded frame in stored orientation.
+    public let pixelBuffer: CVPixelBuffer
+    public let candidates: [BallObservation]
+    /// The stage's output for this frame, in stored orientation (before `FrameOrientation`).
+    public let frame: BallTrackFrame
+    /// The live detector and stage, so tools can read their internals (mask, model).
+    public let detector: any BallDetector
+    public let stage: any BallTrackStage
+}
+
+/// Decodes a movie file frame by frame and runs a detector plus a track stage
 /// over it. Used by the app for saved clips and by `balltrack-lab`.
 public struct ClipTrackRunner: Sendable {
     public let detectorName: String
-    private let trackerConfig: BallTrackerConfig
     private let makeDetector: @Sendable (CMTime) -> any BallDetector
+    private let makeStage: @Sendable (CGSize) -> any BallTrackStage
 
     public init(detectorKind: BallDetectorKind = .default, trackerConfig: BallTrackerConfig = .default) {
-        self.init(detectorName: detectorKind.rawValue, trackerConfig: trackerConfig) { frameDuration in
-            detectorKind.makeDetector(frameDuration: frameDuration)
-        }
+        self.init(detectorName: detectorKind.rawValue,
+                  makeDetector: { frameDuration in detectorKind.makeDetector(frameDuration: frameDuration) },
+                  makeStage: { imageSize in detectorKind.makeTrackStage(imageSize: imageSize, trackerConfig: trackerConfig) })
     }
 
+    /// A custom detector paired with `BallTracker`.
     public init(detectorName: String,
                 trackerConfig: BallTrackerConfig = .default,
                 makeDetector: @escaping @Sendable (CMTime) -> any BallDetector) {
+        self.init(detectorName: detectorName, makeDetector: makeDetector) { _ in BallTracker(config: trackerConfig) }
+    }
+
+    public init(detectorName: String,
+                makeDetector: @escaping @Sendable (CMTime) -> any BallDetector,
+                makeStage: @escaping @Sendable (CGSize) -> any BallTrackStage) {
         self.detectorName = detectorName
-        self.trackerConfig = trackerConfig
         self.makeDetector = makeDetector
+        self.makeStage = makeStage
     }
 
     /// Blocks a background queue for the whole decode; call from a detached task.
-    /// `progress` fires roughly every 10 frames and once at the end.
+    /// `progress` fires roughly every 10 frames and once at the end. `onFrame`, if
+    /// given, is called for every frame on the decode queue (see `ClipTrackFrameEvent`).
     public func run(url: URL,
                     progress: (@Sendable (ClipTrackProgress) -> Void)? = nil,
-                    isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> ClipTrackResult {
+                    isCancelled: @escaping @Sendable () -> Bool = { false },
+                    onFrame: (@Sendable (ClipTrackFrameEvent) throws -> Void)? = nil) async throws -> ClipTrackResult {
         let asset = AVURLAsset(url: url)
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw ClipTrackError.noVideoTrack
@@ -77,8 +102,8 @@ public struct ClipTrackRunner: Sendable {
         let assetRef = asset
         nonisolated(unsafe) let trackRef = videoTrack
         let detectorName = self.detectorName
-        let trackerConfig = self.trackerConfig
         let makeDetector = self.makeDetector
+        let makeStage = self.makeStage
 
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -86,12 +111,13 @@ public struct ClipTrackRunner: Sendable {
                     let result = try Self.process(asset: assetRef, videoTrack: trackRef,
                                                   detectorName: detectorName,
                                                   detector: makeDetector(frameDuration),
-                                                  trackerConfig: trackerConfig,
+                                                  stage: makeStage(naturalSize),
                                                   orientation: orientation,
                                                   frameRate: frameRate,
                                                   estimatedTotal: estimatedTotal,
                                                   progress: progress,
-                                                  isCancelled: isCancelled)
+                                                  isCancelled: isCancelled,
+                                                  onFrame: onFrame)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -104,12 +130,13 @@ public struct ClipTrackRunner: Sendable {
                                 videoTrack: AVAssetTrack,
                                 detectorName: String,
                                 detector: any BallDetector,
-                                trackerConfig: BallTrackerConfig,
+                                stage: any BallTrackStage,
                                 orientation: FrameOrientation,
                                 frameRate: Double,
                                 estimatedTotal: Int,
                                 progress: (@Sendable (ClipTrackProgress) -> Void)?,
-                                isCancelled: @Sendable () -> Bool) throws -> ClipTrackResult {
+                                isCancelled: @Sendable () -> Bool,
+                                onFrame: (@Sendable (ClipTrackFrameEvent) throws -> Void)?) throws -> ClipTrackResult {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
@@ -121,7 +148,7 @@ public struct ClipTrackRunner: Sendable {
             throw ClipTrackError.readerFailed(reader.error?.localizedDescription ?? "startReading returned false")
         }
 
-        var tracker = BallTracker(config: trackerConfig)
+        var stage = stage
         var frames: [BallTrackFrame] = []
         frames.reserveCapacity(estimatedTotal)
         var detectMillis: [Double] = []
@@ -146,8 +173,10 @@ public struct ClipTrackRunner: Sendable {
             }
             detectMillis.append((ContinuousClock.now - detectStart).millis)
 
-            let frame = tracker.update(time: pts.seconds, candidates: candidates)
+            let frame = stage.update(time: pts.seconds, candidates: candidates)
             frames.append(orientation.apply(to: frame))
+            try onFrame?(ClipTrackFrameEvent(index: frames.count - 1, time: pts, pixelBuffer: pixelBuffer,
+                                             candidates: candidates, frame: frame, detector: detector, stage: stage))
 
             if frames.count % 10 == 0 {
                 let fraction = min(0.99, Double(frames.count) / Double(estimatedTotal))

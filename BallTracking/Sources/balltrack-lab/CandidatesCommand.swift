@@ -39,9 +39,9 @@ struct CandidatesCommand {
 
                 var lines = ""
                 for (c, blob) in zip(candidates, blobs) {
-                    lines += String(format: "{\"frame\":%d,\"t\":%.4f,\"x\":%.1f,\"y\":%.1f,\"radius\":%.2f,\"area\":%d,\"arrivals\":%d,\"fill\":%.3f,\"confidence\":%.3f}\n",
+                    lines += String(format: "{\"frame\":%d,\"t\":%.4f,\"x\":%.1f,\"y\":%.1f,\"radius\":%.2f,\"area\":%d,\"arrivals\":%d,\"fill\":%.3f,\"luma\":%.1f,\"surround\":%.1f,\"chroma\":%.1f,\"confidence\":%.3f}\n",
                                     index, pts.seconds, c.center.x * fw, c.center.y * fh, c.radius * fw,
-                                    blob.area, blob.arrivals, blob.fill, c.confidence)
+                                    blob.area, blob.arrivals, blob.fill, blob.meanLuma, blob.surroundLuma, blob.chromaDeviation, c.confidence)
                 }
                 jsonl.write(Data(lines.utf8))
 

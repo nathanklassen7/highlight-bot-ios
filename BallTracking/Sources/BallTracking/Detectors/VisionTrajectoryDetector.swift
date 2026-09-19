@@ -17,7 +17,7 @@ public final class VisionTrajectoryDetector: BallDetector, @unchecked Sendable {
         /// Ball radius bounds as a fraction of the frame. A 40 mm ball 3–5 m away
         /// at 1080p is roughly 0.003–0.007.
         public var minimumNormalizedRadius: Float = 0.001
-        public var maximumNormalizedRadius: Float = 0.012
+        public var maximumNormalizedRadius: Float = 0.005
         /// Frame period; used as Vision's real-time budget hint and the sample duration.
         public var frameDuration: CMTime = CMTime(value: 1, timescale: 60)
 
