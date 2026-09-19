@@ -1,0 +1,94 @@
+# XcodeGen spec for the Highlight Bot iOS app.
+# Regenerate the project with: xcodegen generate
+name: HighlightBot
+
+options:
+  bundleIdPrefix: com.highlightbot
+  deploymentTarget:
+    iOS: "17.2"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+configs:
+  Debug: debug
+  Release: release
+
+packages:
+  HighlightCore:
+    path: HighlightCore
+
+# Project-level defaults; the target repeats the ones that matter.
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  HighlightBot:
+    type: application
+    platform: iOS
+    sources:
+      # Covers App/, Capture/, Features/, Triggers/, Support/ and Resources/ (xcassets picked up automatically).
+      - path: HighlightBot
+        excludes:
+          - "Resources/README.md"
+    dependencies:
+      - package: HighlightCore
+    info:
+      path: HighlightBot/Info.plist
+      properties:
+        CFBundleDisplayName: Highlight Bot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSCameraUsageDescription: Highlight Bot records video continuously so you can save the last few seconds as a clip.
+        NSMicrophoneUsageDescription: Highlight Bot records audio along with video for your clips.
+        NSPhotoLibraryAddUsageDescription: Highlight Bot saves clips you choose to your Photos library.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        # Set your Apple Developer team in Xcode: target HighlightBot -> Signing & Capabilities -> Team.
+        DEVELOPMENT_TEAM: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.highlightbot.app
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: HighlightBot/Info.plist
+        SUPPORTS_MACCATALYST: false
+        ENABLE_PREVIEWS: true
+        OTHER_SWIFT_FLAGS: "$(inherited)"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+schemes:
+  HighlightBot:
+    build:
+      targets:
+        HighlightBot: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - package: HighlightCore/HighlightCoreTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
