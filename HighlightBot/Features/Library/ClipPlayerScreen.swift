@@ -129,7 +129,7 @@ struct ClipPlayerScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.black.opacity(0.55), in: Capsule())
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var bottomBar: some View {

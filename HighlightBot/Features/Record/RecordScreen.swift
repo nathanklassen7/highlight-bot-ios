@@ -291,6 +291,24 @@ struct RecordScreen: View {
 
     // MARK: - Helpers
 
+    @ViewBuilder
+    private var saveStatusBadge: some View {
+        if pendingSaves > 0 {
+            SaveStatusBadge(
+                title: pendingSaves > 1 ? "Saving \(pendingSaves)…" : "Saving…",
+                color: .blue,
+                showsProgress: true
+            )
+        } else if let saveCallout = container.saveCallout {
+            switch saveCallout {
+            case .saved:
+                SaveStatusBadge(title: "Saved!", color: .green)
+            case .failed:
+                SaveStatusBadge(title: "Failed!", color: .red)
+            }
+        }
+    }
+
     /// Changes whenever a preview (re)start might be needed.
     private var previewKey: String {
         "\(permissionsSatisfied)-\(scenePhase == .background)"
@@ -331,20 +349,25 @@ struct RecordScreen: View {
 
 // MARK: - Subviews
 
-/// "Saving…" pill shown while the coordinator has pending saves.
-private struct SavingBadge: View {
-    let count: Int
+/// Status pill for in-flight saves and their outcome.
+private struct SaveStatusBadge: View {
+    let title: String
+    let color: Color
+    var showsProgress = false
 
     var body: some View {
         HStack(spacing: 6) {
-            ProgressView().tint(.white)
-            Text(count > 1 ? "Saving \(count)…" : "Saving…")
+            if showsProgress {
+                ProgressView().tint(.white)
+            }
+            Text(title)
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.blue.opacity(0.85), in: Capsule())
+        .background(color.opacity(0.85), in: Capsule())
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 

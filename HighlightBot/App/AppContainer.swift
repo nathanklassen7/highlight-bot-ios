@@ -18,7 +18,7 @@ enum AppError: Error, LocalizedError {
 }
 
 /// Shown in the Record save pill after in-flight saves drain.
-enum SaveCallout: Equatable {
+enum SaveCallout: Equatable, Hashable {
     case saved
     case failed
 }
