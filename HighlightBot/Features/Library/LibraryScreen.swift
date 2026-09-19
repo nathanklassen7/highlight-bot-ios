@@ -215,7 +215,11 @@ struct LibraryScreen: View {
                 }
             }
             .padding(.vertical, 2)
+            // Content keeps the screen inset; the scroll view itself bleeds to
+            // the edges (negative padding below) so overflow is visible.
+            .padding(.horizontal, ScreenMetrics.horizontal)
         }
+        .padding(.horizontal, -ScreenMetrics.horizontal)
     }
 
     private func pruneSelectionToVisible() {
@@ -556,6 +560,12 @@ struct ClipCell: View {
                         .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
                         .padding(6)
                 }
+                .overlay(alignment: .bottomLeading) {
+                    // Over the thumbnail so tags never change the cell height.
+                    TagPillRow(tags: record.tags, limit: 1)
+                        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                        .padding(6)
+                }
                 .overlay(alignment: .topLeading) {
                     if isSelecting {
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -596,8 +606,6 @@ struct ClipCell: View {
             }
             .font(.caption)
             .lineLimit(1)
-
-            TagPillRow(tags: record.tags, limit: 2)
         }
         .accessibilityElement(children: .combine)
     }

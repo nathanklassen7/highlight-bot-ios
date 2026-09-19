@@ -13,6 +13,7 @@ public enum ClipTag {
         "Baseball",
         "Football",
         "Tennis",
+        "Table Tennis",
         "Pickleball",
         "Volleyball",
         "Lacrosse",

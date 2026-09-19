@@ -19,6 +19,7 @@ struct ClipTagTests {
     func normalizeSportCasing() {
         #expect(ClipTag.normalize("hockey") == "Hockey")
         #expect(ClipTag.normalize(" PICKLEBALL ") == "Pickleball")
+        #expect(ClipTag.normalize("table   tennis") == "Table Tennis")
         #expect(ClipTag.normalize("Soccer") == "Soccer")
     }
 

@@ -14,6 +14,7 @@ enum TagStyle {
         "Baseball": Color(red: 0.85, green: 0.24, blue: 0.26),
         "Football": Color(red: 0.55, green: 0.36, blue: 0.22),
         "Tennis": Color(red: 0.62, green: 0.72, blue: 0.14),
+        "Table Tennis": Color(red: 0.89, green: 0.35, blue: 0.55),
         "Pickleball": Color(red: 0.12, green: 0.62, blue: 0.62),
         "Volleyball": Color(red: 0.86, green: 0.68, blue: 0.10),
         "Lacrosse": Color(red: 0.55, green: 0.36, blue: 0.80),
