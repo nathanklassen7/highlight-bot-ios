@@ -73,7 +73,7 @@ struct LibraryScreen: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
-                ClipPlayerScreen(record: record)
+                ClipPlayerScreen(record: record, navigationOrder: playerNavigationOrder(for: record))
             }
             .fullScreenCover(item: $trimmingRecord) { record in
                 ClipEditorScreen(record: record) { outcome in
@@ -162,6 +162,14 @@ struct LibraryScreen: View {
             (!starredOnly || clip.isStarred)
                 && (selectedTagFilters.isEmpty || clip.tags.contains { ClipTag.contains(selectedTagFilters, $0) })
         }
+    }
+
+    /// Sideways swipes in the player walk the grid as the user sees it. A clip
+    /// opened from the Record tab may be hidden by the active filters; then
+    /// the player walks every clip instead of having nowhere to go.
+    private func playerNavigationOrder(for record: ClipRecord) -> [UUID] {
+        let visible = filteredClips.map(\.id)
+        return visible.contains(record.id) ? visible : clips.map(\.id)
     }
 
     private var availableFilterTags: [String] {

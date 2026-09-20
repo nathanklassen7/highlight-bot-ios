@@ -5,18 +5,28 @@ import UIKit
 /// Resolves and loads a JPEG thumbnail off the main actor and shows a
 /// placeholder until it arrives (or if the file is missing). Takes the file
 /// name rather than a URL so `body` never touches the file system.
+///
+/// Decoded images are kept in a small in-memory cache so a thumbnail that has
+/// been shown once renders synchronously the next time (the player relies on
+/// this when a swiped-to neighbour becomes the current clip's backdrop).
 struct ThumbnailImage: View {
     let fileName: String?
+    /// `.fill` crops to the frame (grid cells); `.fit` letterboxes like the player.
+    var contentMode: ContentMode = .fill
 
-    @State private var image: UIImage?
+    /// The most recent async load, tagged with the file it belongs to so a
+    /// stale image is never shown after `fileName` changes.
+    @State private var loaded: (fileName: String?, image: UIImage?) = (nil, nil)
+
+    private static let cache = NSCache<NSString, UIImage>()
 
     var body: some View {
         ZStack {
             Color.black
-            if let image {
+            if let image = displayedImage {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .aspectRatio(contentMode: contentMode)
             } else {
                 Image(systemName: "film")
                     .font(.title2)
@@ -25,8 +35,28 @@ struct ThumbnailImage: View {
         }
         .clipped()
         .task(id: fileName) {
-            image = await Self.load(fileName)
+            if let cached = Self.cached(fileName) {
+                loaded = (fileName, cached)
+                return
+            }
+            let image = await Self.load(fileName)
+            if let image, let fileName {
+                Self.cache.setObject(image, forKey: fileName as NSString)
+            }
+            loaded = (fileName, image)
         }
+    }
+
+    /// Cache first so a change of `fileName` can render without a frame of
+    /// placeholder; otherwise the async result, only if it is for this file.
+    private var displayedImage: UIImage? {
+        if let cached = Self.cached(fileName) { return cached }
+        return loaded.fileName == fileName ? loaded.image : nil
+    }
+
+    private static func cached(_ fileName: String?) -> UIImage? {
+        guard let fileName else { return nil }
+        return cache.object(forKey: fileName as NSString)
     }
 
     // VERIFY: UIImage is annotated Sendable in the iOS 17 SDK; if the compiler

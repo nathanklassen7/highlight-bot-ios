@@ -4,9 +4,15 @@ import SwiftUI
 import UIKit
 
 /// Full-screen player for one clip with loop and slow-motion controls, plus
-/// Share / Save to Photos / Delete.
+/// Share / Save to Photos / Delete. Swipe down to close; swipe sideways to
+/// move through `navigationOrder`.
 struct ClipPlayerScreen: View {
     @State private var record: ClipRecord
+
+    /// Clip IDs in the order the Library shows them (newest first). Swiping
+    /// left advances to the next ID, right goes back. Neighbours are re-fetched
+    /// from the store on each swipe so deleted clips are skipped.
+    let navigationOrder: [UUID]
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
@@ -29,21 +35,75 @@ struct ClipPlayerScreen: View {
     @State private var showEditor = false
     /// Vertical distance the player has followed a swipe-down; 0 when not dragging.
     @State private var dismissDragOffset: CGFloat = 0
+    /// Horizontal distance the player has followed a sideways swipe; 0 at rest.
+    @State private var pageDragOffset: CGFloat = 0
+    /// Locked on the first movement past `minimumDistance` so a drag can't
+    /// flip between dismissing and paging mid-gesture.
+    @State private var dragAxis: Axis?
+    /// Resolved once when a horizontal drag locks so the hot path doesn't
+    /// hit the store on every movement.
+    @State private var pageNeighbors = PageNeighbors()
+    @State private var isPageTransitioning = false
+    /// False until `AVPlayerLayer` has a frame; the poster thumbnail shows
+    /// through, then the layer fades in over `playerFadeDuration`.
+    @State private var isPlayerVisible = false
+
+    private static let playerFadeDuration: TimeInterval = 0.1
 
     private static let dismissDragThreshold: CGFloat = 120
     private static let dismissFlingThreshold: CGFloat = 300
+    /// Fraction of the screen width a sideways drag must cover to change clips.
+    private static let pageDragThresholdFraction: CGFloat = 0.3
+    private static let pageFlingThreshold: CGFloat = 300
+    /// How far the content follows the finger when there is no clip in that direction.
+    private static let pageEdgeResistance: CGFloat = 0.25
 
-    init(record: ClipRecord) {
+    init(record: ClipRecord, navigationOrder: [UUID] = []) {
         _record = State(initialValue: record)
+        self.navigationOrder = navigationOrder
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            playerContent(
+                pageWidth: proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
+            )
+        }
+    }
+
+    private func playerContent(pageWidth: CGFloat) -> some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             ZStack {
-                PlayerLayerView(player: player)
-                    .ignoresSafeArea()
+                // The poster frame sits under the transparent player layer, so any
+                // moment the layer has no frame (first load, item swap) shows the
+                // thumbnail instead of black. No readiness timing to get right.
+                pageThumbnail(for: record)
+
+                PlayerLayerView(player: player) { ready in
+                    if ready {
+                        isPlayerVisible = true
+                    }
+                }
+                .opacity(isPlayerVisible ? 1 : 0)
+                // Fade only on the way in; hiding on a clip swap must be instant
+                // so the previous video never cross-fades over the new poster.
+                .animation(isPlayerVisible ? .easeOut(duration: Self.playerFadeDuration) : nil, value: isPlayerVisible)
+                .ignoresSafeArea()
+
+                // Neighbouring clips sit one page to either side so a sideways
+                // drag reveals them edge-to-edge instead of empty black.
+                if isShowingNeighborPages {
+                    if let previous = pageNeighbors.previous {
+                        pageThumbnail(for: previous)
+                            .offset(x: -pageWidth)
+                    }
+                    if let next = pageNeighbors.next {
+                        pageThumbnail(for: next)
+                            .offset(x: pageWidth)
+                    }
+                }
 
                 Color.clear
                     .contentShape(Rectangle())
@@ -63,12 +123,12 @@ struct ClipPlayerScreen: View {
                         scheduleOverlayAutoHide()
                     })
             }
-            .offset(y: dismissDragOffset)
+            .offset(x: pageDragOffset, y: dismissDragOffset)
             .scaleEffect(1 - dismissDragProgress * 0.15)
         }
         // Attached to the root so a swipe anywhere counts. Child controls (slider,
         // buttons) still win their own gestures, so scrubbing is unaffected.
-        .gesture(dismissDragGesture)
+        .gesture(swipeGesture(pageWidth: pageWidth))
         .statusBarHidden(true)
         .onAppear { startPlayback() }
         .onDisappear {
@@ -373,43 +433,155 @@ struct ClipPlayerScreen: View {
         }
     }
 
-    // MARK: - Swipe to dismiss
+    // MARK: - Swipe to dismiss / page
 
     /// 0...1 as the drag approaches the dismiss threshold; drives the shrink.
     private var dismissDragProgress: CGFloat {
         min(max(dismissDragOffset / Self.dismissDragThreshold, 0), 1)
     }
 
-    /// Swipe down closes the player. The content follows the finger so the
-    /// gesture reads as "pulling the video away"; a short or upward drag springs
-    /// back. Horizontal-leaning drags are ignored so they can't be mistaken for
-    /// scrubbing that missed the slider.
-    private var dismissDragGesture: some Gesture {
+    /// One drag handles both swipe-down (close) and swipe-sideways (next or
+    /// previous clip). The axis is locked from the first movement so the
+    /// content follows the finger in a straight line. Vertical: the content
+    /// pulls away and shrinks; upward drags do nothing. Horizontal: the content
+    /// slides with the finger, with resistance when there is no clip that way.
+    private func swipeGesture(pageWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 20, coordinateSpace: .local)
             .onChanged { value in
-                guard !isScrubbing else { return }
+                guard !isScrubbing, !isPageTransitioning else { return }
                 let translation = value.translation
-                guard translation.height > 0, translation.height > abs(translation.width) else {
-                    if dismissDragOffset != 0 {
-                        withAnimation(.spring(duration: 0.3)) { dismissDragOffset = 0 }
+                if dragAxis == nil {
+                    if abs(translation.height) > abs(translation.width) {
+                        dragAxis = .vertical
+                    } else {
+                        dragAxis = .horizontal
+                        pageNeighbors = resolvePageNeighbors()
                     }
-                    return
                 }
-                dismissDragOffset = translation.height
+                switch dragAxis {
+                case .vertical:
+                    dismissDragOffset = max(translation.height, 0)
+                case .horizontal:
+                    let hasNeighbor = pageNeighbors.clip(inSwipeDirection: translation.width) != nil
+                    pageDragOffset = hasNeighbor ? translation.width : translation.width * Self.pageEdgeResistance
+                case nil:
+                    break
+                }
             }
             .onEnded { value in
-                guard !isScrubbing, dismissDragOffset > 0 else {
+                let axis = dragAxis
+                dragAxis = nil
+                guard !isScrubbing, !isPageTransitioning else {
                     dismissDragOffset = 0
+                    pageDragOffset = 0
+                    pageNeighbors = PageNeighbors()
                     return
                 }
-                let flungDown = value.predictedEndTranslation.height > Self.dismissFlingThreshold
-                if dismissDragOffset > Self.dismissDragThreshold || flungDown {
-                    player.pause()
-                    dismiss()
-                } else {
-                    withAnimation(.spring(duration: 0.3)) { dismissDragOffset = 0 }
+                switch axis {
+                case .vertical:
+                    endDismissDrag(predictedHeight: value.predictedEndTranslation.height)
+                case .horizontal:
+                    endPageDrag(
+                        translation: value.translation.width,
+                        predicted: value.predictedEndTranslation.width,
+                        pageWidth: pageWidth
+                    )
+                case nil:
+                    break
                 }
             }
+    }
+
+    private func endDismissDrag(predictedHeight: CGFloat) {
+        let flungDown = predictedHeight > Self.dismissFlingThreshold
+        if dismissDragOffset > Self.dismissDragThreshold || flungDown {
+            player.pause()
+            dismiss()
+        } else {
+            withAnimation(.spring(duration: 0.3)) { dismissDragOffset = 0 }
+        }
+    }
+
+    private func endPageDrag(translation: CGFloat, predicted: CGFloat, pageWidth: CGFloat) {
+        let passedThreshold = abs(translation) > pageWidth * Self.pageDragThresholdFraction
+        let flung = abs(predicted) > Self.pageFlingThreshold && predicted.sign == translation.sign
+        // Neighbour pages stay mounted for the whole settle animation either
+        // way; `isPageTransitioning` keeps them visible after `dragAxis` clears.
+        isPageTransitioning = true
+        guard passedThreshold || flung, let next = pageNeighbors.clip(inSwipeDirection: translation) else {
+            withAnimation(.spring(duration: 0.25)) {
+                pageDragOffset = 0
+            } completion: {
+                pageNeighbors = PageNeighbors()
+                isPageTransitioning = false
+            }
+            return
+        }
+        // Slide the strip one page so the neighbour's thumbnail fills the
+        // screen, then swap the player underneath it with the offset reset in
+        // the same frame. The new record's thumbnail is already behind the
+        // layer, so the swap shows the same image until video frames arrive.
+        let landedOffset: CGFloat = translation < 0 ? -pageWidth : pageWidth
+        var hideChrome = Transaction()
+        hideChrome.disablesAnimations = true
+        withTransaction(hideChrome) { isOverlayVisible = false }
+        withAnimation(.spring(duration: 0.3, bounce: 0)) {
+            pageDragOffset = landedOffset
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                switchClip(to: next)
+                pageDragOffset = 0
+                pageNeighbors = PageNeighbors()
+                isPageTransitioning = false
+            }
+            isOverlayVisible = true
+            scheduleOverlayAutoHide()
+        }
+    }
+
+    private var isShowingNeighborPages: Bool {
+        dragAxis == .horizontal || isPageTransitioning
+    }
+
+    /// Full-screen, aspect-fit thumbnail; matches the player's `resizeAspect`
+    /// framing so a landed page and the video that replaces it line up.
+    private func pageThumbnail(for clip: ClipRecord) -> some View {
+        ThumbnailImage(fileName: clip.thumbnailFileName, contentMode: .fit)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+    }
+
+    /// Nearest existing clips on either side of the current one in
+    /// `navigationOrder`. IDs that no longer exist in the store are skipped.
+    private func resolvePageNeighbors() -> PageNeighbors {
+        guard let index = navigationOrder.firstIndex(of: record.id) else { return PageNeighbors() }
+        func nearest(from start: Int, step: Int) -> ClipRecord? {
+            var candidate = start
+            while navigationOrder.indices.contains(candidate) {
+                if let clip = container.clipStore.clip(withID: navigationOrder[candidate]) {
+                    return clip.record
+                }
+                candidate += step
+            }
+            return nil
+        }
+        return PageNeighbors(
+            previous: nearest(from: index - 1, step: -1),
+            next: nearest(from: index + 1, step: 1)
+        )
+    }
+
+    /// Reloads the single player with another clip. Loop and speed carry over;
+    /// position, duration, and the speed menu reset.
+    private func switchClip(to next: ClipRecord) {
+        record = next
+        currentTime = 0
+        duration = record.duration
+        isSpeedMenuExpanded = false
+        isPlayerVisible = false
+        applyLooping()
     }
 
     private func handlePlaybackEnded() {
@@ -597,5 +769,18 @@ struct ClipPlayerScreen: View {
         } catch {
             statusMessage = "Delete failed: \(error.localizedDescription)"
         }
+    }
+}
+
+/// The clips on either side of the one playing, in Library order.
+private struct PageNeighbors {
+    var previous: ClipRecord?
+    var next: ClipRecord?
+
+    /// Finger moving left (negative width) reveals `next`; moving right reveals `previous`.
+    func clip(inSwipeDirection width: CGFloat) -> ClipRecord? {
+        if width < 0 { return next }
+        if width > 0 { return previous }
+        return nil
     }
 }
