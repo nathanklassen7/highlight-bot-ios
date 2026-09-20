@@ -232,6 +232,27 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         }
     }
 
+    func setTorch(_ on: Bool) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                defer { continuation.resume() }
+                guard let device = self.videoDevice, device.hasTorch else { return }
+                // Turning off is always allowed; turning on needs the torch to be
+                // available (it is disabled while the device is too hot).
+                let mode: AVCaptureDevice.TorchMode = on ? .on : .off
+                guard !on || device.isTorchAvailable, device.isTorchModeSupported(mode) else { return }
+                guard device.torchMode != mode else { return }
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = mode
+                    device.unlockForConfiguration()
+                } catch {
+                    Log.capture.notice("setTorch(\(on)) lockForConfiguration failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
     // MARK: - Configuration (on queue)
 
     private func configureOnQueue(_ config: RecordingConfig) throws {

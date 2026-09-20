@@ -117,6 +117,24 @@ final class ClipStore {
         }
     }
 
+    // MARK: - Editing
+
+    /// Points `clip` at freshly exported media (a trim) and removes the old
+    /// files. The model is saved before anything is deleted, so a failed save
+    /// leaves the original clip intact; the new files are then the caller's to
+    /// clean up. Tags, star, trigger source, and `createdAt` are untouched.
+    func replaceMedia(_ clip: Clip, with exported: ExportedClip) throws {
+        let previous = clip.record
+        clip.fileName = exported.fileURL.lastPathComponent
+        clip.thumbnailFileName = exported.thumbnailFileName
+        clip.duration = exported.duration
+        clip.sizeBytes = exported.sizeBytes
+        try context.save()
+        if previous.fileName != clip.fileName {
+            removeFiles(for: previous)
+        }
+    }
+
     private func removeFiles(for record: ClipRecord) {
         let fm = FileManager.default
         var urls = [record.fileURL]

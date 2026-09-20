@@ -111,6 +111,15 @@ struct SettingsScreen: View {
                     Text(voiceFooter)
                 }
 
+                Section {
+                    Toggle("Beep", isOn: $settings.config.saveBeepEnabled)
+                    Toggle("Flash", isOn: $settings.config.saveFlashEnabled)
+                } header: {
+                    Text("Save feedback")
+                } footer: {
+                    Text("One pulse when a save is accepted, three when the clip is saved, five if it fails. Beeps play through the speaker while recording, so they ignore the Ring/Silent switch and the microphone may pick them up. Flash uses the camera torch and lights the clip.")
+                }
+
                 Section("Storage") {
                     LabeledContent("Clips on device", value: ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file))
                     Button("Delete all clips", role: .destructive) {

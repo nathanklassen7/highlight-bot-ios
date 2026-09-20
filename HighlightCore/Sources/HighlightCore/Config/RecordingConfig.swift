@@ -37,6 +37,10 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     /// Whether saying "clip it" while recording saves a clip. Needs the
     /// microphone even when `recordAudio` is off.
     public var voiceTriggerEnabled: Bool
+    /// Whether beeps play to acknowledge a save and report its outcome.
+    public var saveBeepEnabled: Bool
+    /// Whether the camera torch flashes along with save feedback.
+    public var saveFlashEnabled: Bool
 
     public init(
         bufferSeconds: TimeInterval = 20,
@@ -51,7 +55,9 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         minimumFreeBytes: Int64 = 500 * 1024 * 1024,
         debugOverlayEnabled: Bool = false,
         lens: CameraLens = .wide,
-        voiceTriggerEnabled: Bool = false
+        voiceTriggerEnabled: Bool = false,
+        saveBeepEnabled: Bool = true,
+        saveFlashEnabled: Bool = true
     ) {
         self.bufferSeconds = bufferSeconds
         self.segmentInterval = segmentInterval
@@ -66,10 +72,12 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         self.debugOverlayEnabled = debugOverlayEnabled
         self.lens = lens
         self.voiceTriggerEnabled = voiceTriggerEnabled
+        self.saveBeepEnabled = saveBeepEnabled
+        self.saveFlashEnabled = saveFlashEnabled
     }
 
     // Custom decoding so configs persisted before `lens` / `voiceTriggerEnabled`
-    // existed still load.
+    // / `saveBeepEnabled` / `saveFlashEnabled` existed still load.
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bufferSeconds = try c.decode(TimeInterval.self, forKey: .bufferSeconds)
@@ -85,6 +93,8 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
         debugOverlayEnabled = try c.decode(Bool.self, forKey: .debugOverlayEnabled)
         lens = try c.decodeIfPresent(CameraLens.self, forKey: .lens) ?? .wide
         voiceTriggerEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceTriggerEnabled) ?? false
+        saveBeepEnabled = try c.decodeIfPresent(Bool.self, forKey: .saveBeepEnabled) ?? true
+        saveFlashEnabled = try c.decodeIfPresent(Bool.self, forKey: .saveFlashEnabled) ?? true
     }
 
     /// The default configuration.

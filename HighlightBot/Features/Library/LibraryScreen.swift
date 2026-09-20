@@ -2,8 +2,8 @@ import HighlightCore
 import SwiftData
 import SwiftUI
 
-/// Grid of saved clips, newest first. Tap to play; long-press for Share,
-/// Save to Photos, and Delete. Select mode toggles membership in a set of
+/// Grid of saved clips, newest first. Tap to play; long-press for Star, Tags,
+/// Trim, Share, Save to Photos, and Delete. Select mode toggles membership in a set of
 /// clip IDs (range-drag can later union a contiguous slice into the same set).
 private enum LibraryMotion {
     static let clipSelection = Animation.easeInOut(duration: 0.12)
@@ -22,6 +22,7 @@ struct LibraryScreen: View {
     @State private var starredOnly = false
     @State private var selectedTagFilters: [String] = []
     @State private var editingTagsFor: ClipRecord?
+    @State private var trimmingRecord: ClipRecord?
     @State private var showBulkTagPicker = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
@@ -73,6 +74,11 @@ struct LibraryScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(item: $playerRecord) { record in
                 ClipPlayerScreen(record: record)
+            }
+            .fullScreenCover(item: $trimmingRecord) { record in
+                ClipEditorScreen(record: record) { outcome in
+                    handleEdit(outcome)
+                }
             }
             .sheet(item: $editingTagsFor) { record in
                 TagPickerSheet(title: "Edit Tags", initialSelection: record.tags) { tags in
@@ -370,6 +376,11 @@ struct LibraryScreen: View {
                 } label: {
                     Label("Edit Tags", systemImage: "tag")
                 }
+                Button {
+                    trimmingRecord = record
+                } label: {
+                    Label("Trim", systemImage: "scissors")
+                }
                 ShareLink(item: record.fileURL) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -556,6 +567,15 @@ struct LibraryScreen: View {
             statusMessage = "Saved to Photos"
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    /// The editor already updated the store (and `lastClip` for a replace);
+    /// `@Query` refreshes the grid, so only the toast is left.
+    private func handleEdit(_ outcome: ClipEditOutcome) {
+        switch outcome {
+        case .replaced: statusMessage = "Trimmed"
+        case .savedCopy: statusMessage = "Saved as a new clip"
         }
     }
 }

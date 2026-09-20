@@ -163,6 +163,9 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     /// Replay cannot change the file's frame rate.
     func setFrameRate(_ fps: Int) async {}
 
+    /// No torch on a replayed file.
+    func setTorch(_ on: Bool) async {}
+
     /// Replayed files are already upright.
     var captureRotationAngle: CGFloat { 0 }
 

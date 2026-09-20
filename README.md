@@ -64,3 +64,7 @@ The voice trigger uses on-device `SFSpeechRecognizer` (English) on the microphon
 *n* is picked on the Record screen (10 / 20 / 30 / 60 s, capped at the buffer length in Settings; default 20 s). Saving never stops recording; several saves can be in flight at once. Recording stops itself after the inactivity timeout (default 45 min) with a warning 5 minutes before.
 
 Clips land in `Documents/Clips/` and are visible in the Files app. Share, Save to Photos, and Delete are in the Library tab and the player.
+
+## Trimming
+
+Trim opens from the scissors button in the player or the long-press menu in the Library. Drag the yellow handles to pick a range (1 s minimum), play to preview just that range, then Save and choose **Replace Original** or **Save as New Clip**. Trimming re-encodes so the cut lands on the chosen frame rather than the nearest keyframe; expect a few seconds for a 20–30 s clip. A new clip keeps the original's timestamp, tags, and star so it sits beside its source.

@@ -19,6 +19,8 @@ struct RecordingConfigTests {
         #expect(config.minimumFreeBytes == 500 * 1024 * 1024)
         #expect(config.debugOverlayEnabled == false)
         #expect(config.voiceTriggerEnabled == false)
+        #expect(config.saveBeepEnabled == true)
+        #expect(config.saveFlashEnabled == true)
         #expect(RecordingConfig.bufferOptions == [10, 20, 30, 60])
         #expect(RecordingConfig.frameRateOptions == [30, 60, 120])
         #expect(RecordingConfig.maxFrameRateFor1080p == 60)
@@ -82,9 +84,25 @@ struct RecordingConfigTests {
         config.bufferSeconds = 30
         config.lens = .ultraWide
         config.voiceTriggerEnabled = true
+        config.saveBeepEnabled = false
+        config.saveFlashEnabled = false
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
         #expect(decoded == config)
+    }
+
+    @Test("decodes configs persisted before save feedback toggles existed as on")
+    func decodesWithoutSaveFeedback() throws {
+        var object = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(RecordingConfig.default)
+        ) as! [String: Any]
+        object.removeValue(forKey: "saveBeepEnabled")
+        object.removeValue(forKey: "saveFlashEnabled")
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
+        #expect(decoded.saveBeepEnabled == true)
+        #expect(decoded.saveFlashEnabled == true)
+        #expect(decoded == .default)
     }
 
     @Test("decodes configs persisted before `voiceTriggerEnabled` existed as off")

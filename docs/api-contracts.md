@@ -396,6 +396,7 @@ struct ExportedClip: Sendable {
     let thumbnailURL: URL?
     let duration: TimeInterval
     let sizeBytes: Int64
+    var thumbnailFileName: String?     // "Thumbnails/<base>.jpg", as ClipRecord stores it
 }
 
 final class ClipExporter: Sendable {
@@ -403,6 +404,10 @@ final class ClipExporter: Sendable {
     init(clipsDirectory: URL)
     /// Concatenate plan.urls into a temp fMP4, passthrough-export to .mp4, generate a JPEG thumbnail.
     func export(_ plan: ClipPlan, baseName: String) async throws -> ExportedClip
+    /// Building blocks shared with ClipTrimmer.
+    static func runExport(asset: AVAsset, preset: String, timeRange: CMTimeRange? = nil, to outputURL: URL) async throws
+    static func writeThumbnail(asset: AVAsset, at seconds: Double = 0.5, baseName: String, clipsDirectory: URL) async -> URL?
+    static func fileSize(at url: URL) -> Int64
 }
 
 /// Wires CaptureSource → SampleFanout → SegmentedRecorder → SegmentRingBuffer, plus FrameTap.
@@ -521,6 +526,22 @@ enum AppDirectories {
     func setStarred(_ clip: Clip, isStarred: Bool) throws
     func setStarred(_ clips: [Clip], isStarred: Bool) throws
     func usedTags() -> [String]                                 // distinct tags on at least one clip
+    /// Trim result replaces the clip's media: repoint fileName/thumbnail/duration/size, save, then delete the old files.
+    func replaceMedia(_ clip: Clip, with exported: ExportedClip) throws
+}
+
+/// Trim editor (HighlightBot/Features/Editor/). Opened from the player's bottom bar and the Library long-press menu.
+enum ClipEditOutcome { case replaced(ClipRecord), savedCopy(ClipRecord) }
+struct ClipEditorScreen: View {        // present with .fullScreenCover; onComplete fires before dismiss
+    init(record: ClipRecord, onComplete: @escaping (ClipEditOutcome) -> Void)
+}
+struct TrimRangeBar: View              // filmstrip + start/end handles + playhead; enforces minimumDuration
+final class ClipTrimmer: Sendable {
+    static let minimumDuration: Double // 1.0 s
+    init(clipsDirectory: URL)
+    /// Re-encodes [start, end) of the source (HEVC stays HEVC) to clipsDirectory/<baseName>.mp4 plus thumbnail. Source untouched.
+    func trim(_ sourceURL: URL, start: Double, end: Double, baseName: String) async throws -> ExportedClip
+    static func discard(_ exported: ExportedClip)   // remove a trim's files if the store could not record it
 }
 
 /// Tag lists that outlive clips, in UserDefaults. No Tag table: the clip list is small enough to scan.

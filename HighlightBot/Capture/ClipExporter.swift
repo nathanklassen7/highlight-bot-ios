@@ -12,6 +12,11 @@ struct ExportedClip: Sendable {
     let thumbnailURL: URL?
     let duration: TimeInterval
     let sizeBytes: Int64
+
+    /// Thumbnail name relative to the clips directory, as `ClipRecord` stores it.
+    var thumbnailFileName: String? {
+        thumbnailURL.map { "Thumbnails/" + $0.lastPathComponent }
+    }
 }
 
 /// Errors from `ClipExporter`.
@@ -77,12 +82,12 @@ final class ClipExporter: Sendable {
         let asset = AVURLAsset(url: concatURL)
         // Thumbnail reads the concatenated stream, so it can run alongside the
         // export rather than waiting for the finished file.
-        async let thumbnail = makeThumbnail(asset: asset, baseName: baseName)
+        async let thumbnail = Self.writeThumbnail(asset: asset, baseName: baseName, clipsDirectory: clipsDirectory)
         do {
-            try await runExport(asset: asset, preset: AVAssetExportPresetPassthrough, to: outputURL)
+            try await Self.runExport(asset: asset, preset: AVAssetExportPresetPassthrough, to: outputURL)
         } catch {
             Log.export.warning("Passthrough export failed (\(error.localizedDescription, privacy: .public)); re-encoding with HighestQuality")
-            try await runExport(asset: asset, preset: AVAssetExportPresetHighestQuality, to: outputURL)
+            try await Self.runExport(asset: asset, preset: AVAssetExportPresetHighestQuality, to: outputURL)
         }
         let thumbnailURL = await thumbnail
         let sizeBytes = Self.fileSize(at: outputURL)
@@ -118,7 +123,14 @@ final class ClipExporter: Sendable {
         }
     }
 
-    private func runExport(asset: AVURLAsset, preset: String, to outputURL: URL) async throws {
+    /// Exports `asset` (or just `timeRange` of it) to an `.mp4` at `outputURL`,
+    /// replacing any existing file. Shared with `ClipTrimmer`.
+    static func runExport(
+        asset: AVAsset,
+        preset: String,
+        timeRange: CMTimeRange? = nil,
+        to outputURL: URL
+    ) async throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: outputURL.path) {
             try fileManager.removeItem(at: outputURL)
@@ -127,6 +139,9 @@ final class ClipExporter: Sendable {
             throw ExportError.exportSessionUnavailable
         }
         session.shouldOptimizeForNetworkUse = true
+        if let timeRange {
+            session.timeRange = timeRange
+        }
 
         if #available(iOS 18, *) {
             // VERIFY: iOS 18 async API `export(to:as:)`; throws on failure.
@@ -146,14 +161,20 @@ final class ClipExporter: Sendable {
         }
     }
 
-    /// Best-effort JPEG at 0.5 s. Returns nil (and logs) rather than failing
-    /// the export when thumbnail generation has trouble.
-    private func makeThumbnail(asset: AVURLAsset, baseName: String) async -> URL? {
+    /// Best-effort 640×360 JPEG at `seconds`, written to `clipsDirectory/Thumbnails/<baseName>.jpg`.
+    /// Returns nil (and logs) rather than failing the export when thumbnail
+    /// generation has trouble. Shared with `ClipTrimmer`.
+    static func writeThumbnail(
+        asset: AVAsset,
+        at seconds: Double = 0.5,
+        baseName: String,
+        clipsDirectory: URL
+    ) async -> URL? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 640, height: 360)
         do {
-            let result = try await generator.image(at: CMTime(seconds: 0.5, preferredTimescale: 600))
+            let result = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600))
             guard let data = UIImage(cgImage: result.image).jpegData(compressionQuality: 0.8) else {
                 Log.export.error("Thumbnail JPEG encoding returned nil for \(baseName, privacy: .public)")
                 return nil
@@ -169,7 +190,8 @@ final class ClipExporter: Sendable {
         }
     }
 
-    private static func fileSize(at url: URL) -> Int64 {
+    /// Size in bytes of the file at `url`; 0 if it cannot be read.
+    static func fileSize(at url: URL) -> Int64 {
         guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]), let size = values.fileSize else {
             return 0
         }

@@ -77,6 +77,8 @@ final class AppContainer {
     let modelContainer: ModelContainer
     /// Kept so config changes can update the eviction policy directly.
     let ringBuffer: SegmentRingBuffer
+    /// Beep-and-flash patterns for save acknowledgement and outcome.
+    let saveFeedback: SaveFeedback
 
     /// Mirror of `coordinator.state`, updated from its event stream.
     var sessionState: SessionState = .idle {
@@ -135,6 +137,7 @@ final class AppContainer {
         self.ringBuffer = ringBuffer
         let exporter = ClipExporter(clipsDirectory: AppDirectories.clips)
         let source = Self.makeCaptureSource()
+        saveFeedback = SaveFeedback { on in await source.setTorch(on) }
 
         let proxy = BackendProxy()
         backendProxy = proxy
@@ -273,6 +276,11 @@ final class AppContainer {
             if state.isRecording != sessionState.isRecording {
                 Haptics.toggled()
             }
+            // The coordinator bumps pendingSaves the moment it accepts a save
+            // from any trigger; that is the earliest point to acknowledge it.
+            if Self.pendingSaves(in: state) > Self.pendingSaves(in: sessionState) {
+                saveFeedback.acknowledge(feedbackChannels)
+            }
             sessionState = state
             updateVoiceListening()
             if Self.pendingSaves(in: state) > 0 {
@@ -293,12 +301,14 @@ final class AppContainer {
             }
             lastClip = record
             Haptics.saved()
+            saveFeedback.succeeded(feedbackChannels)
             publishSaveCalloutIfIdle()
 
         case .saveFailed(let reason):
             saveBatchFailed = true
             errorMessage = "Save failed: \(reason)"
             Haptics.error()
+            saveFeedback.failed(feedbackChannels)
             publishSaveCalloutIfIdle()
 
         case .startFailed(let reason):
@@ -312,6 +322,14 @@ final class AppContainer {
             let minutes = max(1, Int((secondsRemaining / 60).rounded()))
             errorMessage = "Recording stops in \(minutes) min unless you save a clip."
         }
+    }
+
+    /// Save feedback outputs currently enabled in Settings.
+    private var feedbackChannels: SaveFeedback.Channels {
+        var channels: SaveFeedback.Channels = []
+        if settings.config.saveBeepEnabled { channels.insert(.beep) }
+        if settings.config.saveFlashEnabled { channels.insert(.flash) }
+        return channels
     }
 
     private func publishSaveCalloutIfIdle() {

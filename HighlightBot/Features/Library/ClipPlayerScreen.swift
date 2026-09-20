@@ -26,8 +26,13 @@ struct ClipPlayerScreen: View {
     @State private var overlayHideTask: Task<Void, Never>?
     @State private var timeObserver: Any?
     @State private var showTagPicker = false
+    @State private var showEditor = false
+    /// Vertical distance the player has followed a swipe-down; 0 when not dragging.
+    @State private var dismissDragOffset: CGFloat = 0
 
     private static let playbackRates: [Float] = [1.0, 0.5, 0.25, 0.15]
+    private static let dismissDragThreshold: CGFloat = 120
+    private static let dismissFlingThreshold: CGFloat = 300
 
     init(record: ClipRecord) {
         _record = State(initialValue: record)
@@ -37,27 +42,34 @@ struct ClipPlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            PlayerLayerView(player: player)
-                .ignoresSafeArea()
+            ZStack {
+                PlayerLayerView(player: player)
+                    .ignoresSafeArea()
 
-            Color.clear
-                .contentShape(Rectangle())
-                .ignoresSafeArea()
-                .onTapGesture {
-                    handleScreenTap()
-                }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        handleScreenTap()
+                    }
 
-            // No full-rect content shape here: taps on empty areas fall through to
-            // the background layer above, which toggles the overlay. Taps on
-            // controls still land on the controls and reschedule the auto-hide.
-            chromeOverlay
-                .opacity(isOverlayVisible ? 1 : 0)
-                .allowsHitTesting(isOverlayVisible)
-                .accessibilityHidden(!isOverlayVisible)
-                .simultaneousGesture(TapGesture().onEnded {
-                    scheduleOverlayAutoHide()
-                })
+                // No full-rect content shape here: taps on empty areas fall through to
+                // the background layer above, which toggles the overlay. Taps on
+                // controls still land on the controls and reschedule the auto-hide.
+                chromeOverlay
+                    .opacity(isOverlayVisible ? 1 : 0)
+                    .allowsHitTesting(isOverlayVisible)
+                    .accessibilityHidden(!isOverlayVisible)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        scheduleOverlayAutoHide()
+                    })
+            }
+            .offset(y: dismissDragOffset)
+            .scaleEffect(1 - dismissDragProgress * 0.15)
         }
+        // Attached to the root so a swipe anywhere counts. Child controls (slider,
+        // buttons) still win their own gestures, so scrubbing is unaffected.
+        .gesture(dismissDragGesture)
         .statusBarHidden(true)
         .onAppear { startPlayback() }
         .onDisappear {
@@ -111,6 +123,18 @@ struct ClipPlayerScreen: View {
                 isOverlayVisible = true
             } else {
                 scheduleOverlayAutoHide()
+            }
+        }
+        .fullScreenCover(isPresented: $showEditor) {
+            ClipEditorScreen(record: record) { outcome in
+                handleEdit(outcome)
+            }
+        }
+        .onChange(of: showEditor) { _, isPresented in
+            // Two players on one file is wasteful; hand playback to the editor.
+            if isPresented {
+                player.pause()
+                markPlaybackInactive()
             }
         }
         .overlay(alignment: .top) {
@@ -273,6 +297,12 @@ struct ClipPlayerScreen: View {
 
             Spacer()
 
+            Button {
+                showEditor = true
+            } label: {
+                Label("Trim", systemImage: "scissors")
+            }
+
             ShareLink(item: record.fileURL) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
@@ -414,6 +444,45 @@ struct ClipPlayerScreen: View {
             isOverlayVisible = true
             scheduleOverlayAutoHide()
         }
+    }
+
+    // MARK: - Swipe to dismiss
+
+    /// 0...1 as the drag approaches the dismiss threshold; drives the shrink.
+    private var dismissDragProgress: CGFloat {
+        min(max(dismissDragOffset / Self.dismissDragThreshold, 0), 1)
+    }
+
+    /// Swipe down closes the player. The content follows the finger so the
+    /// gesture reads as "pulling the video away"; a short or upward drag springs
+    /// back. Horizontal-leaning drags are ignored so they can't be mistaken for
+    /// scrubbing that missed the slider.
+    private var dismissDragGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onChanged { value in
+                guard !isScrubbing else { return }
+                let translation = value.translation
+                guard translation.height > 0, translation.height > abs(translation.width) else {
+                    if dismissDragOffset != 0 {
+                        withAnimation(.spring(duration: 0.3)) { dismissDragOffset = 0 }
+                    }
+                    return
+                }
+                dismissDragOffset = translation.height
+            }
+            .onEnded { value in
+                guard !isScrubbing, dismissDragOffset > 0 else {
+                    dismissDragOffset = 0
+                    return
+                }
+                let flungDown = value.predictedEndTranslation.height > Self.dismissFlingThreshold
+                if dismissDragOffset > Self.dismissDragThreshold || flungDown {
+                    player.pause()
+                    dismiss()
+                } else {
+                    withAnimation(.spring(duration: 0.3)) { dismissDragOffset = 0 }
+                }
+            }
     }
 
     private func handlePlaybackEnded() {
@@ -571,6 +640,21 @@ struct ClipPlayerScreen: View {
         }
     }
 
+    /// Called by the editor before it dismisses. A replaced clip is reloaded
+    /// from its new file and starts over; a copy leaves this player alone.
+    private func handleEdit(_ outcome: ClipEditOutcome) {
+        switch outcome {
+        case .replaced(let updated):
+            record = updated
+            currentTime = 0
+            duration = record.duration
+            applyLooping()
+            statusMessage = "Trimmed"
+        case .savedCopy:
+            statusMessage = "Saved as a new clip"
+        }
+    }
+
     private func deleteClip() {
         guard let clip = container.clipStore.clip(withID: record.id) else {
             dismiss()
@@ -595,37 +679,5 @@ private struct SpeedMenuAnchorKey: PreferenceKey {
 
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
         value = nextValue() ?? value
-    }
-}
-
-/// Renders `player` with aspect-fit video and no system playback controls.
-private struct PlayerLayerView: UIViewRepresentable {
-    let player: AVPlayer
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        PlayerUIView(player: player)
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        uiView.playerLayer.player = player
-    }
-}
-
-private final class PlayerUIView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
-
-    init(player: AVPlayer) {
-        super.init(frame: .zero)
-        backgroundColor = .black
-        isUserInteractionEnabled = false
-        playerLayer.player = player
-        playerLayer.videoGravity = .resizeAspect
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 }

@@ -36,8 +36,9 @@ protocol AudioSampleListener: AnyObject, Sendable {
 }
 
 /// A camera or a file replay. Not an actor: each implementation owns its own
-/// serial queue and hops onto it for configuration and lifecycle work.
-protocol CaptureSource: AnyObject {
+/// serial queue and hops onto it for configuration and lifecycle work, which
+/// is what makes conformers `Sendable`.
+protocol CaptureSource: AnyObject, Sendable {
     /// Single-consumer stream of lifecycle events. Created once per source.
     var events: AsyncStream<CaptureEvent> { get }
     /// `AVCaptureVideoPreviewLayer` for the camera, `AVSampleBufferDisplayLayer` for replay.
@@ -50,6 +51,9 @@ protocol CaptureSource: AnyObject {
     func stop() async
     /// Lower or restore the frame rate (thermal). No-op if unsupported.
     func setFrameRate(_ fps: Int) async
+    /// Turn the camera torch on or off. No-op when the device has no torch or
+    /// no camera has been configured yet.
+    func setTorch(_ on: Bool) async
     /// Rotation, in degrees, that makes recorded video horizon-level given the
     /// data output delivers frames in the sensor's native orientation. Read at
     /// recording start and stamped into the file as metadata (no per-frame work).
