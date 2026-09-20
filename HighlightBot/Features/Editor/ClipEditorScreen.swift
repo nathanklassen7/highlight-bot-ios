@@ -31,6 +31,8 @@ struct ClipEditorScreen: View {
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var player = AVPlayer()
     @State private var timeObserver: Any?
@@ -268,61 +270,100 @@ struct ClipEditorScreen: View {
         .padding(.bottom, 16)
     }
 
+    /// Compact-width portrait (iPhone). Landscape keeps the single-row bar.
+    private var stacksSlowMotionControls: Bool {
+        horizontalSizeClass == .compact && verticalSizeClass == .regular
+    }
+
     /// Add/remove the slow-mo segment and, once there is one, pick its speed.
     /// The speed menu floats above this bar via `speedMenuOverlay`.
+    @ViewBuilder
     private var slowMotionBar: some View {
-        HStack(spacing: 12) {
-            Button {
-                toggleSlowMotion()
-            } label: {
-                Label(
-                    slowMotion == nil ? "Add Slow-mo" : "Remove Slow-mo",
-                    systemImage: slowMotion == nil ? "plus.circle" : "minus.circle"
-                )
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(slowMotion == nil ? Color.white : Color.green)
+        Group {
+            if stacksSlowMotionControls {
+                VStack(alignment: .leading, spacing: 12) {
+                    addSlowMotionButton
+                    if let slowMotion {
+                        HStack(spacing: 12) {
+                            slowMotionSpeedTrigger(slowMotion)
+                            slowMotionDurationLabel(slowMotion)
+                            Spacer(minLength: 0)
+                        }
+                        slowMotionReplayToggle
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                HStack(spacing: 12) {
+                    addSlowMotionButton
+                    if let slowMotion {
+                        slowMotionDivider
+                        slowMotionSpeedTrigger(slowMotion)
+                        slowMotionDurationLabel(slowMotion)
+                        slowMotionDivider
+                        slowMotionReplayToggle
+                            .fixedSize()
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.white.opacity(0.08), in: Capsule())
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(slowMotion == nil ? "Inserts a 1 second slow-mo segment halfway through the selection" : "")
-
-            if let slowMotion {
-                Divider()
-                    .frame(height: 16)
-                    .overlay(Color.white.opacity(0.3))
-
-                SpeedMenuTrigger(
-                    rate: slowMotion.rate,
-                    isExpanded: $isSpeedMenuExpanded,
-                    accessibilityNoun: "slow-mo speeds"
-                )
-                .font(.title3)
-                .foregroundStyle(.white)
-
-                Text("\(TrimRangeBar.timeText(slowMotion.duration)) → \(TrimRangeBar.timeText(slowMotion.scaledDuration))")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.green)
-                    .accessibilityLabel("Slow-mo lasts \(TrimRangeBar.timeText(slowMotion.duration)) and plays for \(TrimRangeBar.timeText(slowMotion.scaledDuration))")
-
-                Divider()
-                    .frame(height: 16)
-                    .overlay(Color.white.opacity(0.3))
-
-                Toggle("Slow-mo replay", isOn: $isSlowMotionReplay)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(isSlowMotionReplay ? Color.green : Color.white)
-                    .tint(.green)
-                    .controlSize(.small)
-                    .fixedSize()
-                    .accessibilityHint("Plays the trimmed clip at normal speed, then replays the slow-mo segment")
-            }
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.white.opacity(0.08), in: Capsule())
         .animation(.easeInOut(duration: 0.15), value: slowMotion == nil)
         .animation(.easeInOut(duration: 0.15), value: isSlowMotionReplay)
+        .animation(.easeInOut(duration: 0.15), value: stacksSlowMotionControls)
+    }
+
+    private var addSlowMotionButton: some View {
+        Button {
+            toggleSlowMotion()
+        } label: {
+            Label(
+                slowMotion == nil ? "Add Slow-mo" : "Remove Slow-mo",
+                systemImage: slowMotion == nil ? "plus.circle" : "minus.circle"
+            )
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(slowMotion == nil ? Color.white : Color.green)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(slowMotion == nil ? "Inserts a 1 second slow-mo segment halfway through the selection" : "")
+    }
+
+    private func slowMotionSpeedTrigger(_ slowMotion: SlowMotionSegment) -> some View {
+        SpeedMenuTrigger(
+            rate: slowMotion.rate,
+            isExpanded: $isSpeedMenuExpanded,
+            accessibilityNoun: "slow-mo speeds"
+        )
+        .font(.title3)
+        .foregroundStyle(.white)
+    }
+
+    private func slowMotionDurationLabel(_ slowMotion: SlowMotionSegment) -> some View {
+        Text("\(TrimRangeBar.timeText(slowMotion.duration)) → \(TrimRangeBar.timeText(slowMotion.scaledDuration))")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(Color.green)
+            .accessibilityLabel("Slow-mo lasts \(TrimRangeBar.timeText(slowMotion.duration)) and plays for \(TrimRangeBar.timeText(slowMotion.scaledDuration))")
+    }
+
+    private var slowMotionReplayToggle: some View {
+        Toggle("Slow-mo replay", isOn: $isSlowMotionReplay)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(isSlowMotionReplay ? Color.green : Color.white)
+            .tint(.green)
+            .controlSize(.small)
+            .accessibilityHint("Plays the trimmed clip at normal speed, then replays the slow-mo segment")
+    }
+
+    private var slowMotionDivider: some View {
+        Divider()
+            .frame(height: 16)
+            .overlay(Color.white.opacity(0.3))
     }
 
     private var exportingOverlay: some View {
