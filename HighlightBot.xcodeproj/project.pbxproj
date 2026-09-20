@@ -16,6 +16,7 @@
 		24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A2143011647568553306C /* FileReplayCaptureSource.swift */; };
 		2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BEEBD4CB3D63EDBA7BA8FC /* CaptureEngine.swift */; };
 		36F112ED5C6E5502FC875759 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */; };
+		37A8EA54D504D71233B6C17B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = E1B7DB62E3F12BFF3CAE8189 /* PrivacyInfo.xcprivacy */; };
 		3AEF9345FB2E9635F1B25D30 /* HighlightBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */; };
 		4185208EFB18B1143896FD0A /* TapTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA14FB816379FF37F46C4D57 /* TapTrigger.swift */; };
 		45463AC756EA95AE04A63E2B /* PermissionsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA49A4BA94CF37EF4806662 /* PermissionsManager.swift */; };
@@ -97,6 +98,7 @@
 		BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSource.swift; sourceTree = "<group>"; };
 		BFF01A657AE8AFD210E933EC /* SegmentedRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedRecorder.swift; sourceTree = "<group>"; };
 		D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImage.swift; sourceTree = "<group>"; };
+		E1B7DB62E3F12BFF3CAE8189 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		EA14FB816379FF37F46C4D57 /* TapTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapTrigger.swift; sourceTree = "<group>"; };
 		EC79DA3C37CF382A4FBEE979 /* SpeedMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedMenu.swift; sourceTree = "<group>"; };
 		F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPipeline.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				9F3B5243D29085E9A8A2EECF /* Info.plist */,
+				E1B7DB62E3F12BFF3CAE8189 /* PrivacyInfo.xcprivacy */,
 				35B26967DB7FB48D19151ED4 /* App */,
 				BDA3A8E5B0251551A2A9E70A /* Capture */,
 				17A3DAEBE982E4DA6BF7BDF1 /* Features */,
@@ -347,6 +350,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				00FCE730D897899335549BC2 /* Assets.xcassets in Resources */,
+				37A8EA54D504D71233B6C17B /* PrivacyInfo.xcprivacy in Resources */,
 				A304462C3FFA218042A8406B /* clip-saved.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
