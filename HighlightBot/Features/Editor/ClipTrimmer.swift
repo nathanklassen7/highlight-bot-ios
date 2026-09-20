@@ -45,8 +45,14 @@ struct SlowMotionSegment: Equatable, Sendable {
     /// Seconds the segment lasts once slowed.
     var scaledDuration: Double { duration / Double(rate) }
 
-    /// Extra seconds the slow-mo adds to the finished clip.
-    var addedDuration: Double { scaledDuration - duration }
+    /// Extra seconds the slow-mo adds to the finished clip. In-place stretch
+    /// replaces the segment's source duration; replay keeps the 1× pass and
+    /// appends `scaledDuration`.
+    var addedDuration: Double { addedDuration(replay: false) }
+
+    func addedDuration(replay: Bool) -> Double {
+        replay ? scaledDuration : scaledDuration - duration
+    }
 
     func contains(_ time: Double) -> Bool {
         time >= start && time < end
@@ -98,11 +104,15 @@ final class ClipTrimmer: Sendable {
     /// clip runs longer than `end - start`. The stretch goes through an
     /// `AVMutableComposition`, which retimes frames rather than synthesising
     /// new ones; audio in the segment is slowed with pitch correction.
+    ///
+    /// With `replay`, the trimmed range stays at 1× and the slow-mo segment is
+    /// appended afterwards at `duration / rate`.
     func trim(
         _ sourceURL: URL,
         start: Double,
         end: Double,
         slowMotion: SlowMotionSegment? = nil,
+        replay: Bool = false,
         baseName: String
     ) async throws -> ExportedClip {
         guard start >= 0, end > start else { throw TrimError.rangeOutOfBounds }
@@ -131,9 +141,9 @@ final class ClipTrimmer: Sendable {
         var expectedDuration = end - start
         if let slowMotion {
             let clampedSegment = slowMotion.clamped(to: start, end, minimumDuration: 0)
-            expectedDuration += clampedSegment.addedDuration
-            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x as \(baseName, privacy: .public) (\(preset, privacy: .public))")
-            let composition = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment)
+            expectedDuration += clampedSegment.addedDuration(replay: replay)
+            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x replay=\(replay) as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+            let composition = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment, replay: replay)
             try await ClipExporter.runExport(asset: composition, preset: preset, to: outputURL)
         } else {
             Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
@@ -171,12 +181,15 @@ final class ClipTrimmer: Sendable {
     }
 
     /// `range` of `asset` on fresh video/audio tracks, with `slowMotion`
-    /// (source seconds) stretched to its scaled duration. The video track's
-    /// orientation transform is carried over so portrait clips stay portrait.
+    /// (source seconds) stretched to its scaled duration. When `replay` is
+    /// true, the range stays at 1× and the segment is inserted again after it
+    /// before the stretch. The video track's orientation transform is carried
+    /// over so portrait clips stay portrait.
     private static func composition(
         of asset: AVAsset,
         range: CMTimeRange,
-        slowMotion: SlowMotionSegment
+        slowMotion: SlowMotionSegment,
+        replay: Bool
     ) async throws -> AVMutableComposition {
         let composition = AVMutableComposition()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -189,16 +202,39 @@ final class ClipTrimmer: Sendable {
         try video.insertTimeRange(range, of: sourceVideo, at: .zero)
         video.preferredTransform = try await sourceVideo.load(.preferredTransform)
 
-        if let sourceAudio = audioTracks.first,
-           let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-            try audio.insertTimeRange(range, of: sourceAudio, at: .zero)
+        let sourceAudio = audioTracks.first
+        var audio: AVMutableCompositionTrack?
+        if let sourceAudio {
+            audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            if let audio {
+                try audio.insertTimeRange(range, of: sourceAudio, at: .zero)
+            }
         }
 
-        // Composition time starts at 0 where the source starts at `range.start`.
-        let segmentStart = CMTime(seconds: slowMotion.start, preferredTimescale: 600) - range.start
-        let segmentDuration = CMTime(seconds: slowMotion.duration, preferredTimescale: 600)
+        let segmentRange = CMTimeRange(
+            start: CMTime(seconds: slowMotion.start, preferredTimescale: 600),
+            duration: CMTime(seconds: slowMotion.duration, preferredTimescale: 600)
+        )
         let scaledDuration = CMTime(seconds: slowMotion.scaledDuration, preferredTimescale: 600)
-        composition.scaleTimeRange(CMTimeRange(start: segmentStart, duration: segmentDuration), toDuration: scaledDuration)
+
+        if replay {
+            let insertAt = range.duration
+            try video.insertTimeRange(segmentRange, of: sourceVideo, at: insertAt)
+            if let sourceAudio, let audio {
+                try audio.insertTimeRange(segmentRange, of: sourceAudio, at: insertAt)
+            }
+            composition.scaleTimeRange(
+                CMTimeRange(start: insertAt, duration: segmentRange.duration),
+                toDuration: scaledDuration
+            )
+        } else {
+            // Composition time starts at 0 where the source starts at `range.start`.
+            let segmentStart = CMTime(seconds: slowMotion.start, preferredTimescale: 600) - range.start
+            composition.scaleTimeRange(
+                CMTimeRange(start: segmentStart, duration: segmentRange.duration),
+                toDuration: scaledDuration
+            )
+        }
         return composition
     }
 

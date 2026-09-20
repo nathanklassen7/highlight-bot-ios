@@ -19,7 +19,9 @@ enum ClipEditOutcome {
 ///
 /// Preview plays the slow-mo by switching the player's rate as the playhead
 /// crosses the segment, so the timeline stays in source seconds. Export
-/// stretches the segment for real (see `ClipTrimmer`).
+/// stretches the segment for real (see `ClipTrimmer`). With Slow-mo replay
+/// on, the first pass stays at 1× and the segment plays again at the slow
+/// rate afterwards; Save appends that replay to the file.
 ///
 /// Present with `.fullScreenCover`. `onComplete` fires before dismissal so the
 /// presenter can refresh its copy of the record.
@@ -36,6 +38,12 @@ struct ClipEditorScreen: View {
     @State private var start: Double = 0
     @State private var end: Double
     @State private var slowMotion: SlowMotionSegment?
+    /// When a segment exists, play the trim at 1× then replay the segment slow.
+    @State private var isSlowMotionReplay = false
+    /// True while the post-pass replay of the green range is in flight.
+    @State private var isReplayingSlowMotion = false
+    /// True between hitting `end` and the seek back to the slow-mo start landing.
+    @State private var isSeekingSlowMotionReplay = false
     @State private var isSpeedMenuExpanded = false
     @State private var playhead: Double = 0
     @State private var isPlaying = false
@@ -104,17 +112,25 @@ struct ClipEditorScreen: View {
         }
         .onChange(of: slowMotion) { old, new in
             // Preview whichever slow-mo edge moved; a rate change previews nothing.
-            guard let new else { return }
+            guard let new else {
+                stopSlowMotionReplayPhase()
+                return
+            }
             if old?.start != new.start {
                 handleEdgeChange(to: new.start)
             } else if old?.end != new.end {
                 handleEdgeChange(to: new.end)
             }
         }
+        .onChange(of: isSlowMotionReplay) { _, replay in
+            if !replay {
+                stopSlowMotionReplayPhase()
+            }
+            applyPreviewRate()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
             guard notification.object as AnyObject? === player.currentItem else { return }
-            playhead = end
-            isPlaying = false
+            handlePlaybackReachedEnd()
         }
         .confirmationDialog("Save edited clip?", isPresented: $showSaveOptions, titleVisibility: .visible) {
             Button("Replace Original") {
@@ -229,6 +245,7 @@ struct ClipEditorScreen: View {
                     if editing {
                         player.pause()
                         isPlaying = false
+                        stopSlowMotionReplayPhase()
                     } else {
                         seek(to: playhead, preview: false)
                     }
@@ -285,6 +302,18 @@ struct ClipEditorScreen: View {
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.green)
                     .accessibilityLabel("Slow-mo lasts \(TrimRangeBar.timeText(slowMotion.duration)) and plays for \(TrimRangeBar.timeText(slowMotion.scaledDuration))")
+
+                Divider()
+                    .frame(height: 16)
+                    .overlay(Color.white.opacity(0.3))
+
+                Toggle("Slow-mo replay", isOn: $isSlowMotionReplay)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(isSlowMotionReplay ? Color.green : Color.white)
+                    .tint(.green)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .accessibilityHint("Plays the trimmed clip at normal speed, then replays the slow-mo segment")
             }
 
             Spacer(minLength: 0)
@@ -293,6 +322,7 @@ struct ClipEditorScreen: View {
         .padding(.vertical, 10)
         .background(.white.opacity(0.08), in: Capsule())
         .animation(.easeInOut(duration: 0.15), value: slowMotion == nil)
+        .animation(.easeInOut(duration: 0.15), value: isSlowMotionReplay)
     }
 
     private var exportingOverlay: some View {
@@ -315,9 +345,14 @@ struct ClipEditorScreen: View {
     private var selectedDuration: Double { max(end - start, 0) }
 
     /// Length of the clip Save will write: the selection plus whatever the
-    /// slow-mo stretch adds.
+    /// slow-mo stretch (or appended replay) adds.
     private var outputDuration: Double {
-        selectedDuration + (slowMotion?.addedDuration ?? 0)
+        selectedDuration + extraSlowMotionDuration
+    }
+
+    private var extraSlowMotionDuration: Double {
+        guard let slowMotion else { return 0 }
+        return slowMotion.addedDuration(replay: isSlowMotionReplay)
     }
 
     private var isTrimmed: Bool {
@@ -336,9 +371,13 @@ struct ClipEditorScreen: View {
     }
 
     private var hintText: String {
-        slowMotion == nil
-            ? "Drag the handles to trim. Saving re-encodes the clip."
-            : "Yellow handles trim; green handles bound the slow-mo. Saving re-encodes the clip."
+        if slowMotion == nil {
+            return "Drag the handles to trim. Saving re-encodes the clip."
+        }
+        if isSlowMotionReplay {
+            return "The clip plays at full speed, then the green range replays in slow-mo. Saving re-encodes the clip."
+        }
+        return "Yellow handles trim; green handles bound the slow-mo. Saving re-encodes the clip."
     }
 
     private var saveMessage: String {
@@ -347,7 +386,11 @@ struct ClipEditorScreen: View {
             parts.append("Keeps \(TrimRangeBar.timeText(selectedDuration)) of \(TrimRangeBar.timeText(duration)).")
         }
         if let slowMotion {
-            parts.append("\(TrimRangeBar.timeText(slowMotion.duration)) plays at \(SpeedMenu.percentLabel(for: slowMotion.rate)), so the clip runs \(TrimRangeBar.timeText(outputDuration)).")
+            if isSlowMotionReplay {
+                parts.append("Then \(TrimRangeBar.timeText(slowMotion.duration)) replays at \(SpeedMenu.percentLabel(for: slowMotion.rate)), so the clip runs \(TrimRangeBar.timeText(outputDuration)).")
+            } else {
+                parts.append("\(TrimRangeBar.timeText(slowMotion.duration)) plays at \(SpeedMenu.percentLabel(for: slowMotion.rate)), so the clip runs \(TrimRangeBar.timeText(outputDuration)).")
+            }
         }
         parts.append(isTrimmed ? "Replacing removes the rest from this device." : "Replacing overwrites the original on this device.")
         return parts.joined(separator: " ")
@@ -365,19 +408,40 @@ struct ClipEditorScreen: View {
             seek(to: segment.start, preview: false)
         } else {
             slowMotion = nil
+            stopSlowMotionReplayPhase()
             if isPlaying { player.rate = 1 }
         }
     }
 
     /// Preview runs at the slow-mo rate while the playhead is inside the
-    /// segment and at 1× elsewhere. Only touches the player while it is
-    /// playing, since setting a non-zero rate on a paused player starts it.
+    /// segment and at 1× elsewhere. Replay mode keeps the first pass at 1×
+    /// and only slows during the appended replay. Only touches the player
+    /// while it is playing, since setting a non-zero rate on a paused player
+    /// starts it.
     private func applyPreviewRate() {
         guard isPlaying else { return }
-        let target: Float = slowMotion.map { $0.contains(playhead) ? $0.rate : 1 } ?? 1
+        let target: Float
+        if isReplayingSlowMotion, let slowMotion {
+            target = slowMotion.rate
+        } else if isSlowMotionReplay {
+            target = 1
+        } else {
+            target = slowMotion.map { $0.contains(playhead) ? $0.rate : 1 } ?? 1
+        }
         if player.rate != target {
             player.rate = target
         }
+    }
+
+    /// Drop the post-pass replay without pausing a first-pass preview.
+    private func stopSlowMotionReplayPhase() {
+        isSeekingSlowMotionReplay = false
+        guard isReplayingSlowMotion else {
+            applyEndTime()
+            return
+        }
+        isReplayingSlowMotion = false
+        applyEndTime()
     }
 
     // MARK: - Playback
@@ -419,6 +483,14 @@ struct ClipEditorScreen: View {
             isPlaying = false
             return
         }
+        if isReplayingSlowMotion, let segment = slowMotion, playhead < segment.end - 0.05 {
+            player.currentItem?.forwardPlaybackEndTime = CMTime(seconds: segment.end, preferredTimescale: 600)
+            player.rate = segment.rate
+            isPlaying = true
+            return
+        }
+        isReplayingSlowMotion = false
+        applyEndTime()
         if playhead >= end - 0.05 || playhead < start {
             seek(to: start, preview: false)
         }
@@ -428,8 +500,46 @@ struct ClipEditorScreen: View {
     }
 
     /// Playback stops at `end` on its own; seeks are clamped to the range too.
+    /// During a slow-mo replay the end time is the segment's end instead.
     private func applyEndTime() {
-        player.currentItem?.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 600)
+        let limit = isReplayingSlowMotion ? (slowMotion?.end ?? end) : end
+        player.currentItem?.forwardPlaybackEndTime = CMTime(seconds: limit, preferredTimescale: 600)
+    }
+
+    /// First pass reached `end`. Either start the slow-mo replay or stop.
+    private func handlePlaybackReachedEnd() {
+        if isSlowMotionReplay, let segment = slowMotion, !isReplayingSlowMotion {
+            beginSlowMotionReplay(segment)
+            return
+        }
+        finishPlayback()
+    }
+
+    /// Seek back to the green range and play it at the slow-mo rate.
+    private func beginSlowMotionReplay(_ segment: SlowMotionSegment) {
+        isReplayingSlowMotion = true
+        isSeekingSlowMotionReplay = true
+        isPlaying = true
+        playhead = segment.start
+        player.currentItem?.forwardPlaybackEndTime = CMTime(seconds: segment.end, preferredTimescale: 600)
+        let time = CMTime(seconds: segment.start, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+            Task { @MainActor in
+                isSeekingSlowMotionReplay = false
+                guard finished, isReplayingSlowMotion, isSlowMotionReplay, isPlaying else { return }
+                player.rate = segment.rate
+                isPlaying = player.rate != 0
+            }
+        }
+    }
+
+    private func finishPlayback() {
+        player.pause()
+        isPlaying = false
+        isReplayingSlowMotion = false
+        isSeekingSlowMotionReplay = false
+        playhead = end
+        applyEndTime()
     }
 
     /// Show the frame under a moving handle. Handle drags arrive with
@@ -437,7 +547,11 @@ struct ClipEditorScreen: View {
     /// changes (the duration refinement in `load`) preview nothing, so the
     /// playhead stays where the user left it.
     private func handleEdgeChange(to time: Double) {
-        applyEndTime()
+        if isReplayingSlowMotion {
+            stopSlowMotionReplayPhase()
+        } else {
+            applyEndTime()
+        }
         guard isEditing || UIAccessibility.isVoiceOverRunning else {
             playhead = min(max(playhead, start), end)
             return
@@ -461,19 +575,38 @@ struct ClipEditorScreen: View {
         let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             MainActor.assumeIsolated {
-                isPlaying = player.timeControlStatus == .playing && player.rate != 0
-                guard !isEditing, time.isNumeric else { return }
-                let seconds = time.seconds
-                guard seconds.isFinite else { return }
-                playhead = min(max(seconds, start), end)
-                // Belt and braces for `forwardPlaybackEndTime`, which can be
-                // missed when it moves while the item is already past it.
-                if isPlaying, playhead >= end - 0.02 {
-                    player.pause()
-                    isPlaying = false
-                    playhead = end
+                let wasPlaying = isPlaying
+                let playerPlaying = player.timeControlStatus == .playing && player.rate != 0
+                guard !isEditing, time.isNumeric else {
+                    if !isSeekingSlowMotionReplay {
+                        isPlaying = playerPlaying
+                    }
                     return
                 }
+                let seconds = time.seconds
+                guard seconds.isFinite else { return }
+
+                if isSeekingSlowMotionReplay {
+                    return
+                }
+
+                if isReplayingSlowMotion, let segment = slowMotion {
+                    playhead = min(max(seconds, segment.start), segment.end)
+                    if playhead >= segment.end - 0.02, wasPlaying || playerPlaying {
+                        finishPlayback()
+                        return
+                    }
+                    isPlaying = playerPlaying
+                    applyPreviewRate()
+                    return
+                }
+
+                playhead = min(max(seconds, start), end)
+                if playhead >= end - 0.02, wasPlaying || playerPlaying {
+                    handlePlaybackReachedEnd()
+                    return
+                }
+                isPlaying = playerPlaying
                 applyPreviewRate()
             }
         }
@@ -504,6 +637,7 @@ struct ClipEditorScreen: View {
                 start: start,
                 end: end,
                 slowMotion: slowMotion,
+                replay: isSlowMotionReplay,
                 baseName: baseName
             )
             let outcome: ClipEditOutcome
