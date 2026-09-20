@@ -38,6 +38,7 @@
 		94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */; };
 		9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */; };
 		A304462C3FFA218042A8406B /* clip-saved.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7CAD40D813E106259E034E9B /* clip-saved.wav */; };
+		A6C99E82305EFA469FCC1964 /* LibraryDragSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89ACBA146B48AB0343E758F3 /* LibraryDragSelect.swift */; };
 		A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C10A0DE01771B762EA06D28 /* AppContainer.swift */; };
 		A74BEDCE4C68C83277A91882 /* PlayerLayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E9F36756689E3B1DD5FA912 /* PlayerLayerView.swift */; };
 		AB0C00E2087227ACA9C7764E /* ThumbnailImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */; };
@@ -82,6 +83,7 @@
 		7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		7CAD40D813E106259E034E9B /* clip-saved.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "clip-saved.wav"; sourceTree = "<group>"; };
 		83EA040C70A9C59465323ED2 /* DebugOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlay.swift; sourceTree = "<group>"; };
+		89ACBA146B48AB0343E758F3 /* LibraryDragSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDragSelect.swift; sourceTree = "<group>"; };
 		908459397F1630092D59F39E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9A1A2143011647568553306C /* FileReplayCaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReplayCaptureSource.swift; sourceTree = "<group>"; };
 		9C10A0DE01771B762EA06D28 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 			isa = PBXGroup;
 			children = (
 				AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */,
+				89ACBA146B48AB0343E758F3 /* LibraryDragSelect.swift */,
 				3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */,
 				44D86C565B7283A4733D16DE /* PhotosSaver.swift */,
 				9E9F36756689E3B1DD5FA912 /* PlayerLayerView.swift */,
@@ -371,6 +374,7 @@
 				E3BE23656C303D9D3F28103F /* Haptics.swift in Sources */,
 				DAABD631650541C9B16AC649 /* HardwareTrigger.swift in Sources */,
 				3AEF9345FB2E9635F1B25D30 /* HighlightBotApp.swift in Sources */,
+				A6C99E82305EFA469FCC1964 /* LibraryDragSelect.swift in Sources */,
 				9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */,
 				8E5357D04E9F07130096E969 /* Log.swift in Sources */,
 				45463AC756EA95AE04A63E2B /* PermissionsManager.swift in Sources */,

@@ -3,8 +3,11 @@ import SwiftData
 import SwiftUI
 
 /// Grid of saved clips, newest first. Tap to play; long-press for Star, Tags,
-/// Trim, Share, Save to Photos, and Delete. Select mode toggles membership in a set of
-/// clip IDs (range-drag can later union a contiguous slice into the same set).
+/// Trim, Share, Save to Photos, and Delete. Select mode toggles membership in a
+/// set of clip IDs. A vertical drag still scrolls; a drag that starts with a
+/// sideways component selects the contiguous grid range between the start clip
+/// and the clip under the finger (add if the start was unselected, remove if
+/// it was selected), auto-scrolling near the viewport edges.
 private enum LibraryMotion {
     static let clipSelection = Animation.easeInOut(duration: 0.12)
 }
@@ -68,6 +71,21 @@ struct LibraryScreen: View {
                         .padding(.horizontal, ScreenMetrics.horizontal)
                         .padding(.top, ScreenMetrics.top)
                         .padding(.bottom, isSelecting ? 200 : 88)
+                        .background {
+                            LibraryDragSelectBridge(
+                                isEnabled: isSelecting,
+                                selectedIDs: selectedIDs,
+                                orderedIDs: filteredClips.map(\.id),
+                                onSelectionChange: { ids in
+                                    var transaction = Transaction()
+                                    transaction.disablesAnimations = true
+                                    withTransaction(transaction) {
+                                        selectedIDs = ids
+                                    }
+                                }
+                            )
+                            .allowsHitTesting(false)
+                        }
                     }
                 }
             }
@@ -283,8 +301,8 @@ struct LibraryScreen: View {
                 }
             } label: {
                 LibraryActionCircle(
-                    systemImage: isSelecting ? "checkmark" : "checklist",
-                    tint: isSelecting ? AppPalette.confirm : AppPalette.accent
+                    systemImage: isSelecting ? "xmark" : "checklist",
+                    tint: isSelecting ? AppPalette.onFill : AppPalette.accent
                 )
             }
             .buttonStyle(.plain)
@@ -367,6 +385,7 @@ struct LibraryScreen: View {
                 starButton(for: record)
             }
         }
+        .clipDragSelectTarget(id: record.id)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityHint(isSelecting ? (selected ? "Deselect" : "Select") : "Plays the clip")
         .contextMenu {
