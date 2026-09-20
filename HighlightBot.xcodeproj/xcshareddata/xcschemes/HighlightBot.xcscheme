@@ -57,7 +57,7 @@
    <LaunchAction
       buildConfiguration = "Release"
       selectedDebuggerIdentifier = ""
-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.Posix"
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"

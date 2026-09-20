@@ -90,7 +90,10 @@ schemes:
       targets:
         HighlightBot: all
     run:
-      config: Debug
+      # Run Release with no debugger attached so on-device capture timing matches a
+      # TestFlight build. Switch to Debug in Xcode's scheme editor when you need LLDB.
+      config: Release
+      debugEnabled: false
     test:
       config: Debug
       targets:
