@@ -12,6 +12,10 @@ private enum LibraryMotion {
     static let clipSelection = Animation.easeInOut(duration: 0.12)
 }
 
+private enum LibraryLayout {
+    static let horizontalPadding: CGFloat = 8
+}
+
 struct LibraryScreen: View {
     @Environment(AppContainer.self) private var container
     @Query(sort: \Clip.createdAt, order: .reverse) private var clips: [Clip]
@@ -68,7 +72,7 @@ struct LibraryScreen: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, ScreenMetrics.horizontal)
+                        .padding(.horizontal, LibraryLayout.horizontalPadding)
                         .padding(.top, ScreenMetrics.top)
                         .padding(.bottom, isSelecting ? 200 : 88)
                         .background {
@@ -257,9 +261,9 @@ struct LibraryScreen: View {
             .padding(.vertical, 2)
             // Content keeps the screen inset; the scroll view itself bleeds to
             // the edges (negative padding below) so overflow is visible.
-            .padding(.horizontal, ScreenMetrics.horizontal)
+            .padding(.horizontal, LibraryLayout.horizontalPadding)
         }
-        .padding(.horizontal, -ScreenMetrics.horizontal)
+        .padding(.horizontal, -LibraryLayout.horizontalPadding)
     }
 
     private func pruneSelectionToVisible() {
