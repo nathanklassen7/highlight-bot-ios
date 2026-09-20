@@ -6,6 +6,12 @@ import UIKit
 /// Times are seconds from the start of the clip. The handles never come closer
 /// than `minimumDuration` and never leave `0...duration`.
 ///
+/// An optional slow-mo segment draws inside the kept range with the same kind
+/// of handles in green. Its edges stay inside `start...end` and at least
+/// `slowMotionMinimumDuration` apart; moving a trim handle past it pushes it
+/// along. Green handles sit above yellow ones, so where the two coincide the
+/// slow-mo edge moves first and uncovers the trim handle.
+///
 /// Dragging inside the selected range scrubs the playhead; dragging a handle
 /// moves that edge. `onEditingChanged` brackets both so the owner can pause
 /// playback and stop its time observer from fighting the drag.
@@ -13,8 +19,10 @@ struct TrimRangeBar: View {
     let duration: Double
     @Binding var start: Double
     @Binding var end: Double
+    @Binding var slowMotion: SlowMotionSegment?
     let playhead: Double
     let minimumDuration: Double
+    let slowMotionMinimumDuration: Double
     let frames: [UIImage]
     let onEditingChanged: (Bool) -> Void
     let onScrub: (Double) -> Void
@@ -28,7 +36,10 @@ struct TrimRangeBar: View {
     private let accessibilityStep: Double = 0.5
 
     private enum Edge {
-        case start, end
+        case start, end, slowStart, slowEnd
+
+        var isSlowMotion: Bool { self == .slowStart || self == .slowEnd }
+        var isLeading: Bool { self == .start || self == .slowStart }
     }
 
     var body: some View {
@@ -67,6 +78,23 @@ struct TrimRangeBar: View {
                     .offset(x: startX - handleWidth)
                     .allowsHitTesting(false)
 
+                if let slowMotion {
+                    let slowStartX = x(for: slowMotion.start, stripWidth: stripWidth)
+                    let slowEndX = x(for: slowMotion.end, stripWidth: stripWidth)
+
+                    // Tint the stretch that will be slowed.
+                    Color.green.opacity(0.28)
+                        .frame(width: max(slowEndX - slowStartX, 0), height: height)
+                        .offset(x: slowStartX)
+                        .allowsHitTesting(false)
+
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Color.green, lineWidth: borderWidth)
+                        .frame(width: slowEndX - slowStartX + handleWidth * 2, height: height)
+                        .offset(x: slowStartX - handleWidth)
+                        .allowsHitTesting(false)
+                }
+
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(.white)
                     .frame(width: 3, height: height + 8)
@@ -81,6 +109,15 @@ struct TrimRangeBar: View {
                 handle(.end, height: height)
                     .offset(x: endX)
                     .gesture(handleGesture(.end, stripWidth: stripWidth))
+
+                if let slowMotion {
+                    handle(.slowStart, height: height)
+                        .offset(x: x(for: slowMotion.start, stripWidth: stripWidth) - handleWidth)
+                        .gesture(handleGesture(.slowStart, stripWidth: stripWidth))
+                    handle(.slowEnd, height: height)
+                        .offset(x: x(for: slowMotion.end, stripWidth: stripWidth))
+                        .gesture(handleGesture(.slowEnd, stripWidth: stripWidth))
+                }
             }
             .coordinateSpace(name: Self.coordinateSpaceName)
         }
@@ -114,15 +151,14 @@ struct TrimRangeBar: View {
     }
 
     private func handle(_ edge: Edge, height: CGFloat) -> some View {
-        let radii = switch edge {
-        case .start: RectangleCornerRadii(topLeading: cornerRadius, bottomLeading: cornerRadius)
-        case .end: RectangleCornerRadii(bottomTrailing: cornerRadius, topTrailing: cornerRadius)
-        }
-        let value = edge == .start ? start : end
+        let radii = edge.isLeading
+            ? RectangleCornerRadii(topLeading: cornerRadius, bottomLeading: cornerRadius)
+            : RectangleCornerRadii(bottomTrailing: cornerRadius, topTrailing: cornerRadius)
+        let value = time(of: edge)
         return UnevenRoundedRectangle(cornerRadii: radii, style: .continuous)
-            .fill(Color.yellow)
+            .fill(edge.isSlowMotion ? Color.green : Color.yellow)
             .overlay {
-                Image(systemName: edge == .start ? "chevron.compact.left" : "chevron.compact.right")
+                Image(systemName: edge.isLeading ? "chevron.compact.left" : "chevron.compact.right")
                     .font(.body.weight(.bold))
                     .foregroundStyle(.black.opacity(0.7))
             }
@@ -130,12 +166,21 @@ struct TrimRangeBar: View {
             // Generous hit area; the visible handle stays narrow.
             .contentShape(Rectangle().inset(by: -10))
             .accessibilityElement()
-            .accessibilityLabel(edge == .start ? "Trim start" : "Trim end")
+            .accessibilityLabel(accessibilityLabel(for: edge))
             .accessibilityValue(Self.timeText(value))
             .accessibilityAdjustableAction { direction in
                 let delta = direction == .increment ? accessibilityStep : -accessibilityStep
                 set(edge, to: value + delta)
             }
+    }
+
+    private func accessibilityLabel(for edge: Edge) -> String {
+        switch edge {
+        case .start: "Trim start"
+        case .end: "Trim end"
+        case .slowStart: "Slow-mo start"
+        case .slowEnd: "Slow-mo end"
+        }
     }
 
     // MARK: - Geometry
@@ -146,12 +191,31 @@ struct TrimRangeBar: View {
         return handleWidth + CGFloat(fraction) * stripWidth
     }
 
+    private func time(of edge: Edge) -> Double {
+        switch edge {
+        case .start: start
+        case .end: end
+        case .slowStart: slowMotion?.start ?? start
+        case .slowEnd: slowMotion?.end ?? end
+        }
+    }
+
     private func set(_ edge: Edge, to value: Double) {
         switch edge {
         case .start:
             start = min(max(value, 0), end - minimumDuration)
+            slowMotion = slowMotion?.clamped(to: start, end, minimumDuration: slowMotionMinimumDuration)
         case .end:
             end = max(min(value, duration), start + minimumDuration)
+            slowMotion = slowMotion?.clamped(to: start, end, minimumDuration: slowMotionMinimumDuration)
+        case .slowStart:
+            guard var segment = slowMotion else { return }
+            segment.start = min(max(value, start), segment.end - slowMotionMinimumDuration)
+            slowMotion = segment
+        case .slowEnd:
+            guard var segment = slowMotion else { return }
+            segment.end = max(min(value, end), segment.start + slowMotionMinimumDuration)
+            slowMotion = segment
         }
     }
 
@@ -164,7 +228,7 @@ struct TrimRangeBar: View {
                 if let dragOrigin {
                     origin = dragOrigin
                 } else {
-                    origin = edge == .start ? start : end
+                    origin = time(of: edge)
                     dragOrigin = origin
                     onEditingChanged(true)
                 }

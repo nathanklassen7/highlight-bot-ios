@@ -6,6 +6,8 @@ import HighlightCore
 enum TrimError: LocalizedError {
     case rangeTooShort(minimum: Double)
     case rangeOutOfBounds
+    case slowMotionOutOfRange
+    case noVideoTrack
 
     var errorDescription: String? {
         switch self {
@@ -13,7 +15,59 @@ enum TrimError: LocalizedError {
             "A trimmed clip must be at least \(minimum.formatted(.number.precision(.fractionLength(0...1)))) s long."
         case .rangeOutOfBounds:
             "The trim range is outside the clip."
+        case .slowMotionOutOfRange:
+            "The slow-mo segment is outside the trimmed range."
+        case .noVideoTrack:
+            "The clip has no video track."
         }
+    }
+}
+
+/// A stretch of the clip, in source seconds, that plays back slower than real
+/// time. `rate` is the playback speed (0.5 = half speed), so the segment
+/// occupies `duration / rate` seconds in the finished clip.
+struct SlowMotionSegment: Equatable, Sendable {
+    var start: Double
+    var end: Double
+    var rate: Float
+
+    /// Speeds offered for a slow-mo segment. Same options as the player's
+    /// speed menu minus 100%, which would be no slow-mo at all.
+    static let rates: [Float] = [0.5, 0.25, 0.15]
+    static let defaultRate: Float = 0.5
+    /// Length of a freshly inserted segment, before the user adjusts it.
+    static let defaultDuration: Double = 1.0
+    /// Shortest allowed segment; the editor enforces the same floor on its handles.
+    static let minimumDuration: Double = 0.25
+
+    var duration: Double { max(end - start, 0) }
+
+    /// Seconds the segment lasts once slowed.
+    var scaledDuration: Double { duration / Double(rate) }
+
+    /// Extra seconds the slow-mo adds to the finished clip.
+    var addedDuration: Double { scaledDuration - duration }
+
+    func contains(_ time: Double) -> Bool {
+        time >= start && time < end
+    }
+
+    /// `defaultDuration` seconds centred in `start...end` (shrunk if the range
+    /// is shorter than that).
+    static func centered(in start: Double, _ end: Double, rate: Float = defaultRate) -> SlowMotionSegment {
+        let length = min(defaultDuration, max(end - start, 0))
+        let mid = (start + end) / 2
+        return SlowMotionSegment(start: mid - length / 2, end: mid + length / 2, rate: rate)
+    }
+
+    /// Moves the segment inside `start...end`, keeping `minimumDuration` when
+    /// the range allows it. Used when the trim handles move past the segment.
+    func clamped(to start: Double, _ end: Double, minimumDuration: Double = minimumDuration) -> SlowMotionSegment {
+        var result = self
+        let floor = min(minimumDuration, max(end - start, 0))
+        result.end = min(max(result.end, start + floor), end)
+        result.start = max(min(result.start, result.end - floor), start)
+        return result
     }
 }
 
@@ -38,11 +92,30 @@ final class ClipTrimmer: Sendable {
 
     /// Writes `[start, end)` of `sourceURL` to `clipsDirectory/<baseName>.mp4`.
     /// The source file is not modified.
-    func trim(_ sourceURL: URL, start: Double, end: Double, baseName: String) async throws -> ExportedClip {
+    ///
+    /// With `slowMotion`, that part of the range (source seconds, inside
+    /// `[start, end)`) is stretched to `duration / rate` in the output, so the
+    /// clip runs longer than `end - start`. The stretch goes through an
+    /// `AVMutableComposition`, which retimes frames rather than synthesising
+    /// new ones; audio in the segment is slowed with pitch correction.
+    func trim(
+        _ sourceURL: URL,
+        start: Double,
+        end: Double,
+        slowMotion: SlowMotionSegment? = nil,
+        baseName: String
+    ) async throws -> ExportedClip {
         guard start >= 0, end > start else { throw TrimError.rangeOutOfBounds }
         // Allow a hair of slack so a handle sitting exactly at the floor passes.
         guard end - start >= Self.minimumDuration - 0.01 else {
             throw TrimError.rangeTooShort(minimum: Self.minimumDuration)
+        }
+        if let slowMotion {
+            guard slowMotion.rate > 0, slowMotion.rate < 1,
+                  slowMotion.end > slowMotion.start,
+                  slowMotion.start >= start - 0.01, slowMotion.end <= end + 0.01 else {
+                throw TrimError.slowMotionOutOfRange
+            }
         }
 
         let clock = ContinuousClock()
@@ -55,13 +128,22 @@ final class ClipTrimmer: Sendable {
             end: CMTime(seconds: end, preferredTimescale: 600)
         )
 
-        Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
-        try await ClipExporter.runExport(asset: asset, preset: preset, timeRange: range, to: outputURL)
+        var expectedDuration = end - start
+        if let slowMotion {
+            let clampedSegment = slowMotion.clamped(to: start, end, minimumDuration: 0)
+            expectedDuration += clampedSegment.addedDuration
+            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+            let composition = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment)
+            try await ClipExporter.runExport(asset: composition, preset: preset, to: outputURL)
+        } else {
+            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+            try await ClipExporter.runExport(asset: asset, preset: preset, timeRange: range, to: outputURL)
+        }
 
         // Read timing and the thumbnail from the finished file so the record
         // matches what was actually written.
         let output = AVURLAsset(url: outputURL)
-        let duration = await Self.duration(of: output) ?? (end - start)
+        let duration = await Self.duration(of: output) ?? expectedDuration
         let thumbnailURL = await ClipExporter.writeThumbnail(
             asset: output,
             at: min(0.5, duration / 2),
@@ -86,6 +168,38 @@ final class ClipTrimmer: Sendable {
                 Log.export.error("Failed to discard \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// `range` of `asset` on fresh video/audio tracks, with `slowMotion`
+    /// (source seconds) stretched to its scaled duration. The video track's
+    /// orientation transform is carried over so portrait clips stay portrait.
+    private static func composition(
+        of asset: AVAsset,
+        range: CMTimeRange,
+        slowMotion: SlowMotionSegment
+    ) async throws -> AVMutableComposition {
+        let composition = AVMutableComposition()
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let sourceVideo = videoTracks.first else { throw TrimError.noVideoTrack }
+
+        guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw ExportError.exportFailed("Could not add a video track to the composition.")
+        }
+        try video.insertTimeRange(range, of: sourceVideo, at: .zero)
+        video.preferredTransform = try await sourceVideo.load(.preferredTransform)
+
+        if let sourceAudio = audioTracks.first,
+           let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try audio.insertTimeRange(range, of: sourceAudio, at: .zero)
+        }
+
+        // Composition time starts at 0 where the source starts at `range.start`.
+        let segmentStart = CMTime(seconds: slowMotion.start, preferredTimescale: 600) - range.start
+        let segmentDuration = CMTime(seconds: slowMotion.duration, preferredTimescale: 600)
+        let scaledDuration = CMTime(seconds: slowMotion.scaledDuration, preferredTimescale: 600)
+        composition.scaleTimeRange(CMTimeRange(start: segmentStart, duration: segmentDuration), toDuration: scaledDuration)
+        return composition
     }
 
     /// HEVC sources stay HEVC; anything else uses the H.264 highest-quality preset.

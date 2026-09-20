@@ -28,7 +28,7 @@ HighlightBot/            App target (SwiftUI + AVFoundation)
   App/                   Entry point, AppContainer (DI), SettingsStore, SwiftData ClipStore
   Capture/               CaptureEngine, SegmentedRecorder, ClipExporter, RecordingPipeline
   Triggers/              TapTrigger, HardwareTrigger, VoiceTrigger
-  Features/              Record, Library, Settings screens
+  Features/              Record, Library, Editor (trim/edit), Settings screens
   Support/               Permissions, storage/thermal monitors, logging
   Resources/             Asset catalog; drop replay.mov here for the Simulator
 HighlightCore/           Swift package: ring buffer, clip assembly, session state machine, trigger bus
@@ -65,6 +65,8 @@ The voice trigger uses on-device `SFSpeechRecognizer` (English) on the microphon
 
 Clips land in `Documents/Clips/` and are visible in the Files app. Share, Save to Photos, and Delete are in the Library tab and the player.
 
-## Trimming
+## Trim/edit
 
-Trim opens from the scissors button in the player or the long-press menu in the Library. Drag the yellow handles to pick a range (1 s minimum), play to preview just that range, then Save and choose **Replace Original** or **Save as New Clip**. Trimming re-encodes so the cut lands on the chosen frame rather than the nearest keyframe; expect a few seconds for a 20–30 s clip. A new clip keeps the original's timestamp, tags, and star so it sits beside its source.
+Trim/edit opens from the scissors button in the player or the long-press menu in the Library. Drag the yellow handles to pick a range (1 s minimum), play to preview just that range, then Save and choose **Replace Original** or **Save as New Clip**. Saving re-encodes so the cut lands on the chosen frame rather than the nearest keyframe; expect a few seconds for a 20–30 s clip. A new clip keeps the original's timestamp, tags, and star so it sits beside its source.
+
+**Add Slow-mo** drops a 1 s segment in the middle of the selection. Its green handles move like the trim handles (0.25 s minimum, always inside the trimmed range), and the tortoise button picks the speed (50%, 25%, or 15%) from the same menu as the player. Preview plays the segment at that speed; the saved clip has the segment stretched for real, so a 1 s segment at 25% adds 3 s to the result. Frames are retimed rather than interpolated, so a 30 fps source shows 7.5 fps inside a 25% segment. Audio in the segment is slowed with pitch correction.

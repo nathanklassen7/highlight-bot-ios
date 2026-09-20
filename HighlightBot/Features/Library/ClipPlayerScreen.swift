@@ -30,7 +30,6 @@ struct ClipPlayerScreen: View {
     /// Vertical distance the player has followed a swipe-down; 0 when not dragging.
     @State private var dismissDragOffset: CGFloat = 0
 
-    private static let playbackRates: [Float] = [1.0, 0.5, 0.25, 0.15]
     private static let dismissDragThreshold: CGFloat = 120
     private static let dismissFlingThreshold: CGFloat = 300
 
@@ -231,9 +230,12 @@ struct ClipPlayerScreen: View {
 
             playPauseButton
         }
-        .overlayPreferenceValue(SpeedMenuAnchorKey.self) { anchor in
-            speedMenuOverlay(anchor: anchor)
-        }
+        .speedMenuOverlay(
+            isExpanded: $isSpeedMenuExpanded,
+            rates: SpeedMenu.playbackRates,
+            selection: rate,
+            onSelect: { applyRate($0) }
+        )
     }
 
     private var playPauseButton: some View {
@@ -293,7 +295,7 @@ struct ClipPlayerScreen: View {
                 Label("Loop", systemImage: isLooping ? "repeat.circle.fill" : "repeat.circle")
             }
 
-            speedControl
+            SpeedMenuTrigger(rate: rate, isExpanded: $isSpeedMenuExpanded)
 
             Spacer()
 
@@ -325,81 +327,6 @@ struct ClipPlayerScreen: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.black.opacity(0.55), in: Capsule())
-    }
-
-    /// Compact trigger showing the current rate. The rate options open in
-    /// `speedMenu`, overlaid above the bar, so the bar's width never changes.
-    private var speedControl: some View {
-        Button {
-            isSpeedMenuExpanded.toggle()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "tortoise.fill")
-                Text(percentLabel(for: rate))
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(isSpeedMenuExpanded ? Color.yellow : Color.white)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isSpeedMenuExpanded ? "Hide playback speeds" : "Show playback speeds")
-        .accessibilityValue(percentLabel(for: rate))
-        .anchorPreference(key: SpeedMenuAnchorKey.self, value: .bounds) { $0 }
-    }
-
-    /// Positions `speedMenu` so its bottom edge sits just above the bottom bar,
-    /// left-aligned with the speed trigger. Attached as an overlay on the chrome
-    /// so the menu floats over the scrubber instead of participating in layout.
-    private func speedMenuOverlay(anchor: Anchor<CGRect>?) -> some View {
-        GeometryReader { proxy in
-            if isSpeedMenuExpanded, let anchor {
-                let trigger = proxy[anchor]
-                speedMenu
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    // Trigger top is inside the bar's 10pt vertical padding; add an 8pt gap.
-                    .padding(.leading, trigger.minX)
-                    .padding(.bottom, proxy.size.height - trigger.minY + 18)
-                    .transition(.scale(scale: 0.9, anchor: .bottomLeading).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: isSpeedMenuExpanded)
-    }
-
-    private var speedMenu: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Self.playbackRates, id: \.self) { option in
-                let isSelected = option == rate
-                Button {
-                    applyRate(option)
-                    isSpeedMenuExpanded = false
-                } label: {
-                    HStack(spacing: 10) {
-                        Text(percentLabel(for: option))
-                            .font(.footnote.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(isSelected ? Color.yellow : Color.white)
-                            .frame(minWidth: 36, alignment: .leading)
-                        Image(systemName: "checkmark")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.yellow)
-                            .opacity(isSelected ? 1 : 0)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Playback speed \(percentLabel(for: option))")
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-            }
-        }
-        .padding(.vertical, 4)
-        .fixedSize()
-        .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func percentLabel(for rate: Float) -> String {
-        "\(Int((rate * 100).rounded()))%"
     }
 
     private var scrubDuration: Double {
@@ -649,7 +576,7 @@ struct ClipPlayerScreen: View {
             currentTime = 0
             duration = record.duration
             applyLooping()
-            statusMessage = "Trimmed"
+            statusMessage = "Clip updated"
         case .savedCopy:
             statusMessage = "Saved as a new clip"
         }
@@ -670,14 +597,5 @@ struct ClipPlayerScreen: View {
         } catch {
             statusMessage = "Delete failed: \(error.localizedDescription)"
         }
-    }
-}
-
-/// Bounds of the speed trigger, used to anchor the speed menu above the bottom bar.
-private struct SpeedMenuAnchorKey: PreferenceKey {
-    static let defaultValue: Anchor<CGRect>? = nil
-
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = nextValue() ?? value
     }
 }

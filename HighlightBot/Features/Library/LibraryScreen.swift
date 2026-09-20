@@ -574,7 +574,7 @@ struct LibraryScreen: View {
     /// `@Query` refreshes the grid, so only the toast is left.
     private func handleEdit(_ outcome: ClipEditOutcome) {
         switch outcome {
-        case .replaced: statusMessage = "Trimmed"
+        case .replaced: statusMessage = "Clip updated"
         case .savedCopy: statusMessage = "Saved as a new clip"
         }
     }

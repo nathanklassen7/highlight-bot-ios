@@ -48,6 +48,7 @@
 		DA6F29A951FB911AF55F7007 /* SaveFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F07AD5E1CCF31CC6AFF7F8 /* SaveFeedback.swift */; };
 		DAABD631650541C9B16AC649 /* HardwareTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 192C4D350387DC0268C38D25 /* HardwareTrigger.swift */; };
 		E3BE23656C303D9D3F28103F /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B88028D23895EFBC35A9BA /* Haptics.swift */; };
+		E529699E01C927DB741D2775 /* SpeedMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC79DA3C37CF382A4FBEE979 /* SpeedMenu.swift */; };
 		E592E0BC314207E98C66CF39 /* TagPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17283DB048FBFEDA0B066702 /* TagPickerSheet.swift */; };
 		FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8C1E328F17018C98480666 /* SettingsScreen.swift */; };
 /* End PBXBuildFile section */
@@ -95,6 +96,7 @@
 		BFF01A657AE8AFD210E933EC /* SegmentedRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedRecorder.swift; sourceTree = "<group>"; };
 		D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImage.swift; sourceTree = "<group>"; };
 		EA14FB816379FF37F46C4D57 /* TapTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapTrigger.swift; sourceTree = "<group>"; };
+		EC79DA3C37CF382A4FBEE979 /* SpeedMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedMenu.swift; sourceTree = "<group>"; };
 		F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPipeline.swift; sourceTree = "<group>"; };
 		F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightBotApp.swift; sourceTree = "<group>"; };
 		FFA4B93551BC8E234E8A1254 /* ClipEditorScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipEditorScreen.swift; sourceTree = "<group>"; };
@@ -209,6 +211,7 @@
 				3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */,
 				44D86C565B7283A4733D16DE /* PhotosSaver.swift */,
 				9E9F36756689E3B1DD5FA912 /* PlayerLayerView.swift */,
+				EC79DA3C37CF382A4FBEE979 /* SpeedMenu.swift */,
 				D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */,
 			);
 			path = Library;
@@ -382,6 +385,7 @@
 				58FBF577378D38524D35B676 /* SegmentedRecorder.swift in Sources */,
 				FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */,
 				36F112ED5C6E5502FC875759 /* SettingsStore.swift in Sources */,
+				E529699E01C927DB741D2775 /* SpeedMenu.swift in Sources */,
 				891768BDB82A73DF5E40329C /* StorageMonitor.swift in Sources */,
 				E592E0BC314207E98C66CF39 /* TagPickerSheet.swift in Sources */,
 				1344607B27B2CE56720B7AB2 /* TagPill.swift in Sources */,

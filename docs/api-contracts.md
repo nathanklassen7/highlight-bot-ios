@@ -530,18 +530,41 @@ enum AppDirectories {
     func replaceMedia(_ clip: Clip, with exported: ExportedClip) throws
 }
 
-/// Trim editor (HighlightBot/Features/Editor/). Opened from the player's bottom bar and the Library long-press menu.
+/// Trim/edit screen (HighlightBot/Features/Editor/). Opened from the player's bottom bar and the Library long-press menu.
+/// Yellow handles trim; an optional slow-mo segment gets green handles and a speed from the player's speed menu.
+/// Preview switches the player's rate inside the segment; Save re-encodes with the segment stretched for real.
 enum ClipEditOutcome { case replaced(ClipRecord), savedCopy(ClipRecord) }
 struct ClipEditorScreen: View {        // present with .fullScreenCover; onComplete fires before dismiss
     init(record: ClipRecord, onComplete: @escaping (ClipEditOutcome) -> Void)
 }
-struct TrimRangeBar: View              // filmstrip + start/end handles + playhead; enforces minimumDuration
+struct TrimRangeBar: View              // filmstrip + start/end handles + playhead + optional green slow-mo range; enforces both minimums
+/// A stretch of the clip, in source seconds, played at `rate` (0.5 = half speed). Occupies duration / rate in the output.
+struct SlowMotionSegment: Equatable, Sendable {
+    var start: Double, end: Double, rate: Float
+    static let rates: [Float]          // 0.5, 0.25, 0.15 — the player's menu minus 100%
+    static let defaultRate: Float      // 0.5
+    static let defaultDuration: Double // 1.0 s, inserted centred in the selection
+    static let minimumDuration: Double // 0.25 s
+    var duration: Double; var scaledDuration: Double; var addedDuration: Double
+    static func centered(in start: Double, _ end: Double, rate: Float = defaultRate) -> SlowMotionSegment
+    func clamped(to start: Double, _ end: Double, minimumDuration: Double = minimumDuration) -> SlowMotionSegment
+}
 final class ClipTrimmer: Sendable {
     static let minimumDuration: Double // 1.0 s
     init(clipsDirectory: URL)
     /// Re-encodes [start, end) of the source (HEVC stays HEVC) to clipsDirectory/<baseName>.mp4 plus thumbnail. Source untouched.
-    func trim(_ sourceURL: URL, start: Double, end: Double, baseName: String) async throws -> ExportedClip
+    /// With slowMotion, goes through an AVMutableComposition (preferredTransform carried over) and scaleTimeRange()s the segment.
+    func trim(_ sourceURL: URL, start: Double, end: Double, slowMotion: SlowMotionSegment? = nil, baseName: String) async throws -> ExportedClip
     static func discard(_ exported: ExportedClip)   // remove a trim's files if the store could not record it
+}
+
+/// Speed picker shared by the player (playback rate) and editor (slow-mo rate). HighlightBot/Features/Library/SpeedMenu.swift.
+enum SpeedMenu { static let playbackRates: [Float]; static func percentLabel(for rate: Float) -> String }  // 1.0, 0.5, 0.25, 0.15
+struct SpeedMenuTrigger: View   // tortoise + percent; publishes its bounds via SpeedMenuAnchorKey
+struct SpeedMenuList: View      // the rate list
+extension View {
+    /// Floats a SpeedMenuList just above the SpeedMenuTrigger inside this view while isExpanded is true.
+    func speedMenuOverlay(isExpanded: Binding<Bool>, rates: [Float], selection: Float, accessibilityNoun: String = "Playback speed", onSelect: @escaping (Float) -> Void) -> some View
 }
 
 /// Tag lists that outlive clips, in UserDefaults. No Tag table: the clip list is small enough to scan.
@@ -578,8 +601,8 @@ struct TagPickerSheet: View // Sports (always) → Custom (previous tags, long-p
 }
 ```
 
-Screens: `RecordScreen`, `LibraryScreen`, `ClipPlayerScreen`, `SettingsScreen`,
-`DebugOverlay`. Navigation: `RootView` with a `TabView` (Record, Library,
+Screens: `RecordScreen`, `LibraryScreen`, `ClipPlayerScreen`, `ClipEditorScreen`,
+`SettingsScreen`, `DebugOverlay`. Navigation: `RootView` with a `TabView` (Record, Library,
 Settings) — Record tab hides the tab bar while recording.
 
 Info.plist keys required: `NSCameraUsageDescription`,
