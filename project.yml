@@ -77,8 +77,8 @@ targets:
         # com.highlightbot.app is taken by another team (the old free Personal Team
         # auto-registered it), so the ID is namespaced under the developer instead.
         PRODUCT_BUNDLE_IDENTIFIER: com.nathanklassen.highlightbot
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_FILE: HighlightBot/Info.plist
         SUPPORTS_MACCATALYST: false
         ENABLE_PREVIEWS: true
