@@ -1,4 +1,5 @@
 import AVFoundation
+import HighlightCore
 import SwiftUI
 import UIKit
 

@@ -11,11 +11,21 @@ enum ClipEditOutcome {
     case savedCopy(ClipRecord)
 }
 
+/// How the editor hands back its result.
+enum ClipEditorMode {
+    /// Save re-encodes and writes a clip, replacing the original or adding a copy.
+    case export(onComplete: (ClipEditOutcome) -> Void)
+    /// Done returns the edit without encoding; the caller applies it later.
+    /// Used by the montage builder, where clips are rendered together at the end.
+    case configure(onDone: (ClipEdit) -> Void)
+}
+
 /// Full-screen trim/edit screen for one clip. Drag the yellow handles to
 /// choose a range, optionally add a slow-mo segment (green handles, speed from
-/// the same menu as the player), play to preview, then Save to replace the
-/// original or keep the result as a new clip. Saving re-encodes, so it takes a
-/// few seconds; the screen locks while it runs.
+/// the same menu as the player), and play to preview. In export mode, Save
+/// re-encodes and replaces the original or keeps the result as a new clip;
+/// the screen locks while it runs. In configure mode (the montage builder),
+/// Done hands the settings back and nothing is encoded.
 ///
 /// Preview plays the slow-mo by switching the player's rate as the playhead
 /// crosses the segment, so the timeline stays in source seconds. Export
@@ -23,11 +33,13 @@ enum ClipEditOutcome {
 /// on, the first pass stays at 1× and the segment plays again at the slow
 /// rate afterwards; Save appends that replay to the file.
 ///
-/// Present with `.fullScreenCover`. `onComplete` fires before dismissal so the
-/// presenter can refresh its copy of the record.
+/// Present with `.fullScreenCover`. In `.export` mode `onComplete` fires before
+/// dismissal so the presenter can refresh its copy of the record. In
+/// `.configure` mode nothing is encoded: Done hands the `ClipEdit` back and
+/// the montage builder renders it later.
 struct ClipEditorScreen: View {
     let record: ClipRecord
-    let onComplete: (ClipEditOutcome) -> Void
+    let mode: ClipEditorMode
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
@@ -37,11 +49,11 @@ struct ClipEditorScreen: View {
     @State private var player = AVPlayer()
     @State private var timeObserver: Any?
     @State private var duration: Double
-    @State private var start: Double = 0
+    @State private var start: Double
     @State private var end: Double
     @State private var slowMotion: SlowMotionSegment?
     /// When a segment exists, play the trim at 1× then replay the segment slow.
-    @State private var isSlowMotionReplay = false
+    @State private var isSlowMotionReplay: Bool
     /// True while the post-pass replay of the green range is in flight.
     @State private var isReplayingSlowMotion = false
     /// True between hitting `end` and the seek back to the slow-mo start landing.
@@ -57,12 +69,28 @@ struct ClipEditorScreen: View {
 
     private static let filmstripFrameCount = 12
 
+    /// Single-clip editing from the player or Library: Save re-encodes.
     init(record: ClipRecord, onComplete: @escaping (ClipEditOutcome) -> Void) {
+        self.init(record: record, edit: .full(duration: record.duration), mode: .export(onComplete: onComplete))
+    }
+
+    /// Montage child: starts from `edit` and hands the result to `onDone`
+    /// without encoding anything.
+    init(record: ClipRecord, edit: ClipEdit, onDone: @escaping (ClipEdit) -> Void) {
+        self.init(record: record, edit: edit, mode: .configure(onDone: onDone))
+    }
+
+    private init(record: ClipRecord, edit: ClipEdit, mode: ClipEditorMode) {
         self.record = record
-        self.onComplete = onComplete
+        self.mode = mode
         let duration = max(record.duration, 0.01)
+        // A saved edit may predate a trim of this clip; keep it inside the file.
+        let seeded = edit.clamped(toClipDuration: duration, minimumDuration: ClipTrimmer.minimumDuration)
         _duration = State(initialValue: duration)
-        _end = State(initialValue: duration)
+        _start = State(initialValue: seeded.start)
+        _end = State(initialValue: seeded.end)
+        _slowMotion = State(initialValue: seeded.slowMotion)
+        _isSlowMotionReplay = State(initialValue: seeded.slowMotion != nil && seeded.isSlowMotionReplay)
     }
 
     var body: some View {
@@ -187,17 +215,33 @@ struct ClipEditorScreen: View {
 
             Spacer()
 
-            Button {
-                player.pause()
-                showSaveOptions = true
-            } label: {
-                Text("Save")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(hasChanges ? Color.yellow : Color.white.opacity(0.4))
+            switch mode {
+            case .export:
+                Button {
+                    player.pause()
+                    showSaveOptions = true
+                } label: {
+                    Text("Save")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(hasChanges ? Color.yellow : Color.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .disabled(!hasChanges)
+                .accessibilityHint(hasChanges ? "" : "Move a handle or add slow-mo first")
+            case .configure(let onDone):
+                // Always enabled: resetting a clip to full length is a valid edit.
+                Button {
+                    player.pause()
+                    onDone(currentEdit)
+                    dismiss()
+                } label: {
+                    Text("Done")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.yellow)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Keeps this trim for the montage")
             }
-            .buttonStyle(.plain)
-            .disabled(!hasChanges)
-            .accessibilityHint(hasChanges ? "" : "Move a handle or add slow-mo first")
         }
         .padding(.vertical, 12)
     }
@@ -405,20 +449,38 @@ struct ClipEditorScreen: View {
         isTrimmed || slowMotion != nil
     }
 
+    private var isConfiguring: Bool {
+        if case .configure = mode { return true }
+        return false
+    }
+
+    /// The trim and slow-mo as they stand, for the configure mode's Done.
+    private var currentEdit: ClipEdit {
+        ClipEdit(
+            start: start,
+            end: end,
+            slowMotion: slowMotion,
+            isSlowMotionReplay: slowMotion != nil && isSlowMotionReplay
+        )
+    }
+
     private var selectionText: String {
         let selected = "\(TrimRangeBar.timeText(selectedDuration)) selected"
         guard slowMotion != nil else { return selected }
-        return "\(selected) · saves \(TrimRangeBar.timeText(outputDuration))"
+        return "\(selected) · \(isConfiguring ? "makes" : "saves") \(TrimRangeBar.timeText(outputDuration))"
     }
 
     private var hintText: String {
+        let saveNote = isConfiguring
+            ? "Done keeps the edit for the montage; nothing is encoded yet."
+            : "Saving re-encodes the clip."
         if slowMotion == nil {
-            return "Drag the handles to trim. Saving re-encodes the clip."
+            return "Drag the handles to trim. \(saveNote)"
         }
         if isSlowMotionReplay {
-            return "The clip plays at full speed, then the green range replays in slow-mo. Saving re-encodes the clip."
+            return "The clip plays at full speed, then the green range replays in slow-mo. \(saveNote)"
         }
-        return "Yellow handles trim; green handles bound the slow-mo. Saving re-encodes the clip."
+        return "Yellow handles trim; green handles bound the slow-mo. \(saveNote)"
     }
 
     private var saveMessage: String {
@@ -663,6 +725,7 @@ struct ClipEditorScreen: View {
     // MARK: - Save
 
     private func save(replacingOriginal: Bool) async {
+        guard case .export(let onComplete) = mode else { return }
         guard let clip = container.clipStore.clip(withID: record.id) else {
             statusMessage = "This clip no longer exists."
             return
@@ -691,7 +754,7 @@ struct ClipEditorScreen: View {
                     }
                     outcome = .replaced(updated)
                 } else {
-                    // Same timestamp, tags, and star so the copy sits beside its source.
+                    // Same timestamp, tags, star, and montage flag so the copy sits beside its source.
                     let copy = ClipRecord(
                         id: UUID(),
                         createdAt: record.createdAt,
@@ -701,7 +764,8 @@ struct ClipEditorScreen: View {
                         triggerSource: record.triggerSource,
                         sizeBytes: exported.sizeBytes,
                         tags: record.tags,
-                        isStarred: record.isStarred
+                        isStarred: record.isStarred,
+                        isMontage: record.isMontage
                     )
                     try container.clipStore.insert(copy)
                     outcome = .savedCopy(copy)

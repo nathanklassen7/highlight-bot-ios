@@ -19,6 +19,8 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
     public let tags: [String]
     /// User favourite flag.
     public let isStarred: Bool
+    /// True for a clip the montage editor exported from several source clips.
+    public let isMontage: Bool
 
     public init(
         id: UUID,
@@ -29,7 +31,8 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
         triggerSource: TriggerSourceID,
         sizeBytes: Int64,
         tags: [String] = [],
-        isStarred: Bool = false
+        isStarred: Bool = false,
+        isMontage: Bool = false
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -40,10 +43,11 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
         self.sizeBytes = sizeBytes
         self.tags = tags
         self.isStarred = isStarred
+        self.isMontage = isMontage
     }
 
     /// Copy with different user metadata. Capture fields are immutable.
-    public func with(tags: [String]? = nil, isStarred: Bool? = nil) -> ClipRecord {
+    public func with(tags: [String]? = nil, isStarred: Bool? = nil, isMontage: Bool? = nil) -> ClipRecord {
         ClipRecord(
             id: id,
             createdAt: createdAt,
@@ -53,16 +57,17 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
             triggerSource: triggerSource,
             sizeBytes: sizeBytes,
             tags: tags ?? self.tags,
-            isStarred: isStarred ?? self.isStarred
+            isStarred: isStarred ?? self.isStarred,
+            isMontage: isMontage ?? self.isMontage
         )
     }
 
     // MARK: - Codable
 
-    // Custom decoding so records written before `tags` / `isStarred` existed
-    // still decode (missing keys → defaults).
+    // Custom decoding so records written before `tags` / `isStarred` /
+    // `isMontage` existed still decode (missing keys → defaults).
     private enum CodingKeys: String, CodingKey {
-        case id, createdAt, duration, fileName, thumbnailFileName, triggerSource, sizeBytes, tags, isStarred
+        case id, createdAt, duration, fileName, thumbnailFileName, triggerSource, sizeBytes, tags, isStarred, isMontage
     }
 
     public init(from decoder: any Decoder) throws {
@@ -76,5 +81,6 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
         sizeBytes = try container.decode(Int64.self, forKey: .sizeBytes)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         isStarred = try container.decodeIfPresent(Bool.self, forKey: .isStarred) ?? false
+        isMontage = try container.decodeIfPresent(Bool.self, forKey: .isMontage) ?? false
     }
 }

@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Grid of saved clips, newest first. Tap to play; long-press for Star, Tags,
 /// Trim, Share, Save to Photos, and Delete. Select mode toggles membership in a
-/// set of clip IDs. A vertical drag still scrolls; a drag that starts with a
+/// set of clip IDs; with two or more selected, the scissors button opens the montage builder.
+/// A vertical drag still scrolls; a drag that starts with a
 /// sideways component selects the contiguous grid range between the start clip
 /// and the clip under the finger (add if the start was unselected, remove if
 /// it was selected), auto-scrolling near the viewport edges.
@@ -31,6 +32,8 @@ struct LibraryScreen: View {
     @State private var editingTagsFor: ClipRecord?
     @State private var trimmingRecord: ClipRecord?
     @State private var showBulkTagPicker = false
+    @State private var montageRequest: MontageRequest?
+    @State private var isLandscape = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
 
@@ -74,7 +77,7 @@ struct LibraryScreen: View {
                         }
                         .padding(.horizontal, LibraryLayout.horizontalPadding)
                         .padding(.top, ScreenMetrics.top)
-                        .padding(.bottom, isSelecting ? 200 : 88)
+                        .padding(.bottom, selectionScrollBottomInset)
                         .background {
                             LibraryDragSelectBridge(
                                 isEnabled: isSelecting,
@@ -100,6 +103,11 @@ struct LibraryScreen: View {
             .fullScreenCover(item: $trimmingRecord) { record in
                 ClipEditorScreen(record: record) { outcome in
                     handleEdit(outcome)
+                }
+            }
+            .fullScreenCover(item: $montageRequest) { request in
+                MontageEditorScreen(clips: request.clips) { record in
+                    handleMontageSaved(record)
                 }
             }
             .sheet(item: $editingTagsFor) { record in
@@ -174,6 +182,9 @@ struct LibraryScreen: View {
             .onChange(of: container.pendingLibraryClip) { _, _ in
                 consumePendingLibraryClip()
             }
+            .onGeometryChange(for: Bool.self) { proxy in
+                proxy.size.width > proxy.size.height
+            } action: { isLandscape = $0 }
         }
     }
 
@@ -288,31 +299,57 @@ struct LibraryScreen: View {
         return !selected.isEmpty && selected.allSatisfy(\.isStarred)
     }
 
-    private var selectionFABStack: some View {
-        VStack(spacing: 12) {
-            if isSelecting {
-                bulkTagFAB
-                bulkStarFAB
-                shareFAB
-                deleteFAB
-            }
+    private var selectionScrollBottomInset: CGFloat {
+        guard isSelecting else { return 88 }
+        return isLandscape ? 88 : 200
+    }
 
-            Button {
-                if isSelecting {
-                    exitSelection()
-                } else {
-                    isSelecting = true
+    private var selectionFABStack: some View {
+        Group {
+            if isLandscape {
+                HStack(alignment: .center, spacing: 12) {
+                    if isSelecting {
+                        selectionActionFABs
+                    }
+                    selectionToggleFAB
                 }
-            } label: {
-                LibraryActionCircle(
-                    systemImage: isSelecting ? "xmark" : "checklist",
-                    tint: isSelecting ? AppPalette.onFill : AppPalette.accent
-                )
+            } else {
+                VStack(spacing: 12) {
+                    if isSelecting {
+                        selectionActionFABs
+                    }
+                    selectionToggleFAB
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isSelecting ? "Done" : "Select clips")
         }
         .animation(LibraryMotion.clipSelection, value: isSelecting)
+        .animation(LibraryMotion.clipSelection, value: isLandscape)
+    }
+
+    @ViewBuilder
+    private var selectionActionFABs: some View {
+        montageFAB
+        bulkTagFAB
+        bulkStarFAB
+        shareFAB
+        deleteFAB
+    }
+
+    private var selectionToggleFAB: some View {
+        Button {
+            if isSelecting {
+                exitSelection()
+            } else {
+                isSelecting = true
+            }
+        } label: {
+            LibraryActionCircle(
+                systemImage: isSelecting ? "xmark" : "checklist",
+                tint: isSelecting ? AppPalette.onFill : AppPalette.accent
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isSelecting ? "Done" : "Select clips")
     }
 
     private var bulkTagFAB: some View {
@@ -324,6 +361,22 @@ struct LibraryScreen: View {
         .buttonStyle(.plain)
         .disabled(!hasSelection)
         .accessibilityLabel("Add tags to selected clips")
+    }
+
+    private var canMakeMontage: Bool {
+        selectedIDs.count >= MontageDraft.minimumClipCount
+    }
+
+    private var montageFAB: some View {
+        Button {
+            montageRequest = MontageRequest(clips: selectedRecords)
+        } label: {
+            LibraryActionCircle(systemImage: "scissors", tint: AppPalette.accent, enabled: canMakeMontage)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canMakeMontage)
+        .accessibilityLabel("Make a montage from selected clips")
+        .accessibilityHint(canMakeMontage ? "" : "Select at least \(MontageDraft.minimumClipCount) clips")
     }
 
     private var bulkStarFAB: some View {
@@ -609,9 +662,17 @@ struct LibraryScreen: View {
         case .savedCopy: statusMessage = "Saved as a new clip"
         }
     }
+
+    /// The montage screen already inserted the clip and set `lastClip`;
+    /// `@Query` puts it at the top of the grid. Leave select mode and confirm.
+    private func handleMontageSaved(_ record: ClipRecord) {
+        exitSelection()
+        statusMessage = "Montage saved · \(TrimRangeBar.timeText(record.duration))"
+    }
 }
 
-/// One grid cell: thumbnail, duration, relative time, and trigger source icon.
+/// One grid cell: thumbnail, duration, relative time, and the trigger source
+/// icon (a film-stack glyph for montages).
 struct ClipCell: View {
     let record: ClipRecord
     var isSelecting = false
@@ -668,8 +729,11 @@ struct ClipCell: View {
                 }
 
             HStack(spacing: 6) {
-                Image(systemName: Self.symbol(for: record.triggerSource))
+                Image(systemName: record.isMontage ? "film.stack" : Self.symbol(for: record.triggerSource))
                     .foregroundStyle(.secondary)
+                    // The trigger glyph was never read out; only the montage one carries meaning.
+                    .accessibilityHidden(!record.isMontage)
+                    .accessibilityLabel("Montage")
                 Text(record.createdAt, format: .relative(presentation: .named))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
@@ -712,4 +776,11 @@ private struct LibraryActionCircle: View {
             .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
             .opacity(enabled ? 1 : 0.35)
     }
+}
+
+/// Clips handed to the montage builder, wrapped so `fullScreenCover(item:)`
+/// has an identity per request.
+private struct MontageRequest: Identifiable {
+    let id = UUID()
+    let clips: [ClipRecord]
 }

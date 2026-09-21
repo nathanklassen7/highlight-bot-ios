@@ -124,11 +124,16 @@ final class ClipExporter: Sendable {
     }
 
     /// Exports `asset` (or just `timeRange` of it) to an `.mp4` at `outputURL`,
-    /// replacing any existing file. Shared with `ClipTrimmer`.
+    /// replacing any existing file. `videoComposition` is applied when given
+    /// (the montage uses one for per-clip orientation). `progress`, when
+    /// given, receives the session's 0...1 completion as it advances. Shared
+    /// with `ClipTrimmer` and `MontageExporter`.
     static func runExport(
         asset: AVAsset,
         preset: String,
         timeRange: CMTimeRange? = nil,
+        videoComposition: AVVideoComposition? = nil,
+        progress: (@Sendable (Double) -> Void)? = nil,
         to outputURL: URL
     ) async throws {
         let fileManager = FileManager.default
@@ -142,22 +147,77 @@ final class ClipExporter: Sendable {
         if let timeRange {
             session.timeRange = timeRange
         }
+        if let videoComposition {
+            session.videoComposition = videoComposition
+        }
 
-        if #available(iOS 18, *) {
-            // VERIFY: iOS 18 async API `export(to:as:)`; throws on failure.
-            try await session.export(to: outputURL, as: .mp4)
-        } else {
-            session.outputURL = outputURL
-            session.outputFileType = .mp4
-            await session.export()
-            switch session.status {
-            case .completed:
-                break
-            case .cancelled:
-                throw ExportError.exportCancelled
-            default:
-                throw ExportError.exportFailed(session.error?.localizedDescription ?? "status \(session.status.rawValue)")
+        // Setup and the pre-18 export run on the caller; the observer task and
+        // the cancellation handler only call thread-safe members (`progress`,
+        // `states`, `cancelExport`).
+        nonisolated(unsafe) let exportSession = session
+        do {
+            try await withTaskCancellationHandler {
+                if #available(iOS 18, *) {
+                    // `states` ends when the export finishes, so waiting for both
+                    // children is safe; only a thrown export needs to cancel the
+                    // observer.
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        if let progress {
+                            group.addTask {
+                                for await state in exportSession.states(updateInterval: 0.2) {
+                                    if case .exporting(let exportProgress) = state {
+                                        progress(exportProgress.fractionCompleted)
+                                    }
+                                }
+                            }
+                        }
+                        group.addTask {
+                            try await exportSession.export(to: outputURL, as: .mp4)
+                        }
+                        do {
+                            try await group.waitForAll()
+                        } catch {
+                            group.cancelAll()
+                            throw error
+                        }
+                    }
+                } else {
+                    session.outputURL = outputURL
+                    session.outputFileType = .mp4
+                    // No state stream before iOS 18; sample `progress` while the
+                    // export runs and stop as soon as it returns.
+                    let observer: Task<Void, Never>? = progress.map { progress in
+                        Task {
+                            while !Task.isCancelled {
+                                progress(Double(exportSession.progress))
+                                try? await Task.sleep(for: .milliseconds(200))
+                            }
+                        }
+                    }
+                    await session.export()
+                    observer?.cancel()
+                    switch session.status {
+                    case .completed:
+                        break
+                    case .cancelled:
+                        throw ExportError.exportCancelled
+                    default:
+                        throw ExportError.exportFailed(session.error?.localizedDescription ?? "status \(session.status.rawValue)")
+                    }
+                }
+            } onCancel: {
+                exportSession.cancelExport()
             }
+        } catch {
+            // A cancelled iOS 18 export may surface as `CancellationError` or
+            // an `AVError`; the caller only needs to know it was cancelled.
+            guard Task.isCancelled else { throw error }
+            try? fileManager.removeItem(at: outputURL)
+            throw ExportError.exportCancelled
+        }
+        if Task.isCancelled {
+            try? fileManager.removeItem(at: outputURL)
+            throw ExportError.exportCancelled
         }
     }
 

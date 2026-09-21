@@ -17,6 +17,8 @@ final class Clip {
     var tags: [String] = []
     /// User favourite flag. Same migration note as `tags`.
     var isStarred: Bool = false
+    /// Exported by the montage editor. Same migration note as `tags`.
+    var isMontage: Bool = false
 
     init(record: ClipRecord) {
         id = record.id
@@ -28,6 +30,7 @@ final class Clip {
         sizeBytes = record.sizeBytes
         tags = record.tags
         isStarred = record.isStarred
+        isMontage = record.isMontage
     }
 
     /// Value-type view of this model.
@@ -41,7 +44,8 @@ final class Clip {
             triggerSource: TriggerSourceID(rawValue: triggerSource),
             sizeBytes: sizeBytes,
             tags: tags,
-            isStarred: isStarred
+            isStarred: isStarred,
+            isMontage: isMontage
         )
     }
 

@@ -108,7 +108,8 @@ struct ClipAssemblerTests {
             triggerSource: .hardwareButton,
             sizeBytes: 12_345,
             tags: ["Hockey", "Playoffs"],
-            isStarred: true
+            isStarred: true,
+            isMontage: true
         )
         let data = try JSONEncoder().encode(record)
         let json = try #require(String(data: data, encoding: .utf8))
@@ -117,9 +118,10 @@ struct ClipAssemblerTests {
         #expect(decoded == record)
         #expect(decoded.tags == ["Hockey", "Playoffs"])
         #expect(decoded.isStarred)
+        #expect(decoded.isMontage)
     }
 
-    @Test("ClipRecord decodes legacy JSON without tags or isStarred")
+    @Test("ClipRecord decodes legacy JSON without tags, isStarred, or isMontage")
     func clipRecordLegacyDecode() throws {
         let json = """
         {"id":"6BA7B810-9DAD-11D1-80B4-00C04FD430C8","createdAt":0,"duration":20,"fileName":"clip.mp4","triggerSource":"tap","sizeBytes":1}
@@ -127,6 +129,7 @@ struct ClipAssemblerTests {
         let decoded = try JSONDecoder().decode(ClipRecord.self, from: Data(json.utf8))
         #expect(decoded.tags.isEmpty)
         #expect(decoded.isStarred == false)
+        #expect(decoded.isMontage == false)
         #expect(decoded.thumbnailFileName == nil)
     }
 
@@ -144,9 +147,14 @@ struct ClipAssemblerTests {
         let tagged = record.with(tags: ["Golf"])
         #expect(tagged.tags == ["Golf"])
         #expect(tagged.isStarred == false)
+        #expect(tagged.isMontage == false)
         #expect(tagged.id == record.id)
         let starred = tagged.with(isStarred: true)
         #expect(starred.tags == ["Golf"])
         #expect(starred.isStarred)
+        let montage = starred.with(isMontage: true)
+        #expect(montage.isStarred)
+        #expect(montage.isMontage)
+        #expect(montage.tags == ["Golf"])
     }
 }

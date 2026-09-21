@@ -23,60 +23,6 @@ enum TrimError: LocalizedError {
     }
 }
 
-/// A stretch of the clip, in source seconds, that plays back slower than real
-/// time. `rate` is the playback speed (0.5 = half speed), so the segment
-/// occupies `duration / rate` seconds in the finished clip.
-struct SlowMotionSegment: Equatable, Sendable {
-    var start: Double
-    var end: Double
-    var rate: Float
-
-    /// Speeds offered for a slow-mo segment. Same options as the player's
-    /// speed menu minus 100%, which would be no slow-mo at all.
-    static let rates: [Float] = [0.5, 0.25, 0.15]
-    static let defaultRate: Float = 0.5
-    /// Length of a freshly inserted segment, before the user adjusts it.
-    static let defaultDuration: Double = 1.0
-    /// Shortest allowed segment; the editor enforces the same floor on its handles.
-    static let minimumDuration: Double = 0.25
-
-    var duration: Double { max(end - start, 0) }
-
-    /// Seconds the segment lasts once slowed.
-    var scaledDuration: Double { duration / Double(rate) }
-
-    /// Extra seconds the slow-mo adds to the finished clip. In-place stretch
-    /// replaces the segment's source duration; replay keeps the 1× pass and
-    /// appends `scaledDuration`.
-    var addedDuration: Double { addedDuration(replay: false) }
-
-    func addedDuration(replay: Bool) -> Double {
-        replay ? scaledDuration : scaledDuration - duration
-    }
-
-    func contains(_ time: Double) -> Bool {
-        time >= start && time < end
-    }
-
-    /// `defaultDuration` seconds centred in `start...end` (shrunk if the range
-    /// is shorter than that).
-    static func centered(in start: Double, _ end: Double, rate: Float = defaultRate) -> SlowMotionSegment {
-        let length = min(defaultDuration, max(end - start, 0))
-        let mid = (start + end) / 2
-        return SlowMotionSegment(start: mid - length / 2, end: mid + length / 2, rate: rate)
-    }
-
-    /// Moves the segment inside `start...end`, keeping `minimumDuration` when
-    /// the range allows it. Used when the trim handles move past the segment.
-    func clamped(to start: Double, _ end: Double, minimumDuration: Double = minimumDuration) -> SlowMotionSegment {
-        var result = self
-        let floor = min(minimumDuration, max(end - start, 0))
-        result.end = min(max(result.end, start + floor), end)
-        result.start = max(min(result.start, result.end - floor), start)
-        return result
-    }
-}
-
 /// Cuts a saved clip down to a time range and writes the result as a new
 /// `.mp4` (plus thumbnail) beside the original.
 ///
@@ -87,6 +33,23 @@ struct SlowMotionSegment: Equatable, Sendable {
 final class ClipTrimmer: Sendable {
     /// Shortest allowed result. The editor enforces the same floor on its handles.
     static let minimumDuration: Double = 1.0
+
+    /// The checks `trim` runs before touching AVFoundation, for callers that
+    /// render several edits at once. Throws `TrimError`.
+    static func validate(_ edit: ClipEdit) throws {
+        guard edit.start >= 0, edit.end > edit.start else { throw TrimError.rangeOutOfBounds }
+        // Allow a hair of slack so a handle sitting exactly at the floor passes.
+        guard edit.end - edit.start >= minimumDuration - 0.01 else {
+            throw TrimError.rangeTooShort(minimum: minimumDuration)
+        }
+        if let slowMotion = edit.slowMotion {
+            guard slowMotion.rate > 0, slowMotion.rate < 1,
+                  slowMotion.end > slowMotion.start,
+                  slowMotion.start >= edit.start - 0.01, slowMotion.end <= edit.end + 0.01 else {
+                throw TrimError.slowMotionOutOfRange
+            }
+        }
+    }
 
     let clipsDirectory: URL
 
@@ -115,18 +78,7 @@ final class ClipTrimmer: Sendable {
         replay: Bool = false,
         baseName: String
     ) async throws -> ExportedClip {
-        guard start >= 0, end > start else { throw TrimError.rangeOutOfBounds }
-        // Allow a hair of slack so a handle sitting exactly at the floor passes.
-        guard end - start >= Self.minimumDuration - 0.01 else {
-            throw TrimError.rangeTooShort(minimum: Self.minimumDuration)
-        }
-        if let slowMotion {
-            guard slowMotion.rate > 0, slowMotion.rate < 1,
-                  slowMotion.end > slowMotion.start,
-                  slowMotion.start >= start - 0.01, slowMotion.end <= end + 0.01 else {
-                throw TrimError.slowMotionOutOfRange
-            }
-        }
+        try Self.validate(ClipEdit(start: start, end: end, slowMotion: slowMotion, isSlowMotionReplay: replay))
 
         let clock = ContinuousClock()
         let started = clock.now
@@ -239,7 +191,8 @@ final class ClipTrimmer: Sendable {
     }
 
     /// HEVC sources stay HEVC; anything else uses the H.264 highest-quality preset.
-    private static func preset(for asset: AVAsset) async -> String {
+    /// Shared with `MontageExporter`.
+    static func preset(for asset: AVAsset) async -> String {
         guard let track = try? await asset.loadTracks(withMediaType: .video).first,
               let description = try? await track.load(.formatDescriptions).first else {
             return AVAssetExportPresetHighestQuality
@@ -248,7 +201,7 @@ final class ClipTrimmer: Sendable {
         return codec == kCMVideoCodecType_HEVC ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
     }
 
-    private static func duration(of asset: AVAsset) async -> Double? {
+    static func duration(of asset: AVAsset) async -> Double? {
         guard let time = try? await asset.load(.duration), time.isNumeric else { return nil }
         let seconds = time.seconds
         return seconds.isFinite && seconds > 0 ? seconds : nil
