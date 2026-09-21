@@ -10,7 +10,7 @@ import Foundation
 /// | ----------- | ------------------------------ | ------ |
 /// | idle        | startRecording / toggle        | starting → `backend.startRecording()` → recording(0); on throw → idle + `startFailed` |
 /// | idle        | saveClip                       | ignored |
-/// | recording   | saveClip(s)                    | pendingSaves += 1; task: `backend.saveClip` → `clipSaved` / `saveFailed`; pendingSaves -= 1; resets inactivity timer |
+/// | recording   | saveClip(s)                    | ignored if within `saveCooldown` of the last accepted save; else pendingSaves += 1; task: `backend.saveClip` → `clipSaved` / `saveFailed`; pendingSaves -= 1; resets inactivity timer |
 /// | recording   | stopRecording / toggle         | stopping → `backend.stopRecording()` → idle; pending saves finish independently |
 /// | recording   | inactivity timeout             | `inactivityTimeoutFired`, then as stopRecording |
 /// | recording   | captureDidInterrupt            | interrupted |
@@ -19,8 +19,8 @@ import Foundation
 /// | interrupted | saveClip                       | `saveFailed("capture interrupted")` |
 /// | any         | captureDidFail                 | `backend.stopRecording()`; idle; `startFailed(reason)` |
 ///
-/// The inactivity timer starts when recording begins, restarts on every save
-/// trigger, keeps running through `.interrupted`, and is cancelled when the
+/// The inactivity timer starts when recording begins, restarts on every accepted
+/// save trigger, keeps running through `.interrupted`, and is cancelled when the
 /// session leaves `isRecording`. It emits `inactivityWarning` once at
 /// `timeout - warningLeadTime` (only if `timeout > warningLeadTime`) and then
 /// `inactivityTimeoutFired` at `timeout`.
@@ -31,31 +31,39 @@ public actor SessionCoordinator {
     /// Number of `backend.saveClip` calls still in flight. Mirrors the count in
     /// `.recording(pendingSaves:)` but stays meaningful in other states.
     public private(set) var pendingSaveCount = 0
+    /// After an accepted save, further `saveClip` triggers are ignored until this elapses.
+    public static let saveCooldownSeconds: TimeInterval = 4
 
     private var config: RecordingConfig
     private let backend: any RecordingBackend
     private let clock: any Clock<Duration>
     private let warningLeadTime: TimeInterval
+    private let saveCooldown: TimeInterval
 
     private var subscribers: [UUID: AsyncStream<SessionEvent>.Continuation] = [:]
     private var inactivityTask: Task<Void, Never>?
     private var inactivityGeneration = 0
+    /// Instant the last save was accepted. Nil until the first save of the process.
+    private var lastAcceptedSaveAt: ContinuousClock.Instant?
 
     /// - Parameters:
     ///   - config: Recording settings; `bufferSeconds` and `inactivityTimeout` are used here.
     ///   - backend: Performs the actual side effects.
     ///   - clock: Drives the inactivity timer. Inject a test clock to control time.
     ///   - warningLeadTime: How long before the timeout `inactivityWarning` fires. Default 5 minutes.
+    ///   - saveCooldown: How long after an accepted save further `saveClip` triggers are ignored. Default 4 seconds.
     public init(
         config: RecordingConfig,
         backend: any RecordingBackend,
         clock: any Clock<Duration> = ContinuousClock(),
-        warningLeadTime: TimeInterval = 300
+        warningLeadTime: TimeInterval = 300,
+        saveCooldown: TimeInterval = SessionCoordinator.saveCooldownSeconds
     ) {
         self.config = config
         self.backend = backend
         self.clock = clock
         self.warningLeadTime = warningLeadTime
+        self.saveCooldown = saveCooldown
         self.selectedClipSeconds = config.bufferSeconds
     }
 
@@ -108,6 +116,7 @@ public actor SessionCoordinator {
             break
 
         case (.recording, .saveClip(let seconds)):
+            guard !isSaveCoolingDown else { break }
             beginSave(lastSeconds: seconds ?? selectedClipSeconds, source: event.source)
 
         case (.recording, .stopRecording), (.recording, .toggleRecording):
@@ -185,7 +194,13 @@ public actor SessionCoordinator {
         setState(.idle)
     }
 
+    private var isSaveCoolingDown: Bool {
+        guard saveCooldown > 0, let lastAcceptedSaveAt else { return false }
+        return ContinuousClock.now - lastAcceptedSaveAt < .seconds(saveCooldown)
+    }
+
     private func beginSave(lastSeconds: TimeInterval, source: TriggerSourceID) {
+        lastAcceptedSaveAt = .now
         pendingSaveCount += 1
         setState(.recording(pendingSaves: pendingSaveCount))
         restartInactivityTimer()

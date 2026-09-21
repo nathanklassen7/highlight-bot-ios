@@ -282,7 +282,8 @@ public protocol RecordingBackend: Sendable {
 }
 
 public actor SessionCoordinator {
-    public init(config: RecordingConfig, backend: any RecordingBackend, clock: any Clock<Duration> = ContinuousClock())
+    public static let saveCooldownSeconds: TimeInterval = 4
+    public init(config: RecordingConfig, backend: any RecordingBackend, clock: any Clock<Duration> = ContinuousClock(), warningLeadTime: TimeInterval = 300, saveCooldown: TimeInterval = SessionCoordinator.saveCooldownSeconds)
 
     public var state: SessionState { get }
     public var selectedClipSeconds: TimeInterval { get }       // defaults to config.bufferSeconds
@@ -309,7 +310,7 @@ State machine (ported from `highlight-bot/src/state_machine.py`, saving is a tas
 | --- | --- | --- |
 | idle | startRecording / toggleRecording | starting → backend.startRecording() → recording(0); on throw → idle + startFailed |
 | idle | saveClip | ignored |
-| recording | saveClip(s) | pendingSaves += 1, spawn task: backend.saveClip(s ?? selected) → clipSaved / saveFailed; pendingSaves -= 1. Resets inactivity timer. |
+| recording | saveClip(s) | ignored if within saveCooldown of the last accepted save; else pendingSaves += 1, spawn task: backend.saveClip(s ?? selected) → clipSaved / saveFailed; pendingSaves -= 1. Resets inactivity timer. |
 | recording | stopRecording / toggleRecording | stopping → backend.stopRecording() → idle. Pending saves finish independently. |
 | recording | inactivity timeout elapses | inactivityTimeoutFired then same as stopRecording |
 | recording | captureDidInterrupt | interrupted |
@@ -318,7 +319,7 @@ State machine (ported from `highlight-bot/src/state_machine.py`, saving is a tas
 | interrupted | saveClip | saveFailed("capture interrupted") |
 | any | captureDidFail | backend.stopRecording(); idle; startFailed(reason) |
 
-Inactivity: timer starts on entering recording, resets on every saveClip, fires
+Inactivity: timer starts on entering recording, resets on every accepted saveClip, fires
 `inactivityWarning` once at `timeout - 300s` (if timeout > 300s), and
 `inactivityTimeoutFired` at `timeout`. Cancelled on leaving recording.
 

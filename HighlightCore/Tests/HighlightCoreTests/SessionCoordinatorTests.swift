@@ -12,10 +12,16 @@ struct SessionCoordinatorTests {
 
     private func makeHarness(
         config: RecordingConfig = .default,
-        warningLeadTime: TimeInterval = 300
+        warningLeadTime: TimeInterval = 300,
+        saveCooldown: TimeInterval = SessionCoordinator.saveCooldownSeconds
     ) async -> Harness {
         let backend = MockRecordingBackend()
-        let coordinator = SessionCoordinator(config: config, backend: backend, warningLeadTime: warningLeadTime)
+        let coordinator = SessionCoordinator(
+            config: config,
+            backend: backend,
+            warningLeadTime: warningLeadTime,
+            saveCooldown: saveCooldown
+        )
         let events = await EventRecorder.recording(coordinator.events())
         return Harness(backend: backend, coordinator: coordinator, events: events)
     }
@@ -100,7 +106,7 @@ struct SessionCoordinatorTests {
 
     @Test("save increments then decrements pendingSaves and emits clipSaved")
     func saveFlow() async {
-        let h = await makeHarness()
+        let h = await makeHarness(saveCooldown: 0)
         await h.backend.setHoldSaves(true)
         await h.coordinator.handle(.start)
 
@@ -132,7 +138,7 @@ struct SessionCoordinatorTests {
 
     @Test("save with explicit seconds overrides selectedClipSeconds")
     func saveSecondsOverride() async {
-        let h = await makeHarness()
+        let h = await makeHarness(saveCooldown: 0)
         await h.coordinator.setSelectedClipSeconds(30)
         await h.coordinator.handle(.start)
         await h.coordinator.handle(.save())
@@ -156,6 +162,32 @@ struct SessionCoordinatorTests {
         #expect(events.contains(.saveFailed(reason: "export failed")))
         #expect(await eventually { await h.coordinator.state == .recording(pendingSaves: 0) })
         #expect(await h.backend.count(of: .stopRecording) == 0)
+    }
+
+    @Test("saveClip is ignored for saveCooldown after an accepted save")
+    func saveCooldownIgnoresRapidSaves() async {
+        let h = await makeHarness(saveCooldown: 0.08)
+        await h.backend.setHoldSaves(true)
+        await h.coordinator.handle(.start)
+
+        await h.coordinator.handle(.save())
+        await h.coordinator.handle(.save(10, source: .hardwareButton))
+        #expect(await h.coordinator.state == .recording(pendingSaves: 1))
+        #expect(await eventually { await h.backend.saveCalls == [.saveClip(lastSeconds: 20, source: .tap)] })
+
+        await h.backend.releaseSaves()
+        try? await Task.sleep(for: .milliseconds(100))
+        await h.coordinator.handle(.save(10, source: .hardwareButton))
+        #expect(await eventually { await h.backend.saveCalls.count == 2 })
+        #expect(await h.backend.saveCalls == [
+            .saveClip(lastSeconds: 20, source: .tap),
+            .saveClip(lastSeconds: 10, source: .hardwareButton),
+        ])
+    }
+
+    @Test("default saveCooldown is 4 seconds")
+    func defaultSaveCooldown() {
+        #expect(SessionCoordinator.saveCooldownSeconds == 4)
     }
 
     @Test("stop while a save is pending goes idle and the save still completes")
@@ -318,7 +350,7 @@ struct SessionCoordinatorTests {
     func saveResetsTimer() async {
         var config = RecordingConfig.default
         config.inactivityTimeout = 0.15
-        let h = await makeHarness(config: config)
+        let h = await makeHarness(config: config, saveCooldown: 0)
 
         await h.coordinator.handle(.start)
         // Keep poking well inside the timeout; recording must survive.
