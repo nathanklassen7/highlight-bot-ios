@@ -471,7 +471,7 @@ final class ThermalMonitor: Sendable {
     func states() -> AsyncStream<ProcessInfo.ThermalState>
 }
 
-enum Log {  // os.Logger wrappers, subsystem "com.highlightbot.app"
+enum Log {  // os.Logger wrappers, subsystem "com.nathanklassen.highlightbot"
     static let capture: Logger
     static let recorder: Logger
     static let ring: Logger

@@ -3061,7 +3061,7 @@ git commit -m "Add ball tracking overlay and analyse button to the clip player"
 - [ ] **Step 1: On-device acceptance (user or orchestrator with a device)**
 
 Build and run on the iPhone. Record a short rally, save a clip, open it in the Library:
-1. Tap the table-tennis button. A "Tracking ball… N%" pill appears and reaches 100% within ~15 s for a 20 s clip; the log line `Tracked <file>: …` appears in Console (subsystem `com.highlightbot.app`, category `tracking`).
+1. Tap the table-tennis button. A "Tracking ball… N%" pill appears and reaches 100% within ~15 s for a 20 s clip; the log line `Tracked <file>: …` appears in Console (subsystem `com.nathanklassen.highlightbot`, category `tracking`).
 2. Scrub to a frame where the ball is mid-flight. The green ring sits on the ball and a short white trail leads to it. If the ring is consistently offset, `VideoPlayer` is not aspect-fitting to our bounds; note the offset and fall back to hosting an `AVPlayerLayer` (spec, Risks).
 3. Tap the button again: overlay hides. Tap again: shows instantly (cached).
 4. Close and reopen the clip: still cached (`Documents/Clips/Tracks/*.track.json` exists; visible in the Files app).

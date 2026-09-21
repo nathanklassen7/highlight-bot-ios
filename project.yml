@@ -3,7 +3,7 @@
 name: HighlightBot
 
 options:
-  bundleIdPrefix: com.highlightbot
+  bundleIdPrefix: com.nathanklassen
   deploymentTarget:
     iOS: "17.2"
   xcodeVersion: "26.0"
@@ -73,8 +73,10 @@ targets:
         CODE_SIGN_STYLE: Automatic
         # Apple Developer team used for automatic signing. Change here (not in Xcode) so
         # `xcodegen generate` keeps it.
-        DEVELOPMENT_TEAM: 5973D42XN8
-        PRODUCT_BUNDLE_IDENTIFIER: com.highlightbot.app
+        DEVELOPMENT_TEAM: WMYF388QWV
+        # com.highlightbot.app is taken by another team (the old free Personal Team
+        # auto-registered it), so the ID is namespaced under the developer instead.
+        PRODUCT_BUNDLE_IDENTIFIER: com.nathanklassen.highlightbot
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: HighlightBot/Info.plist

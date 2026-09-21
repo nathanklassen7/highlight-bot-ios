@@ -317,7 +317,7 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					A578EA3FB2FD64AC6685EDDE = {
-						DevelopmentTeam = 5973D42XN8;
+						DevelopmentTeam = WMYF388QWV;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -418,7 +418,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 5973D42XN8;
+				DEVELOPMENT_TEAM = WMYF388QWV;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = HighlightBot/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -427,7 +427,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.highlightbot.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanklassen.highlightbot;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -508,7 +508,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 5973D42XN8;
+				DEVELOPMENT_TEAM = WMYF388QWV;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = HighlightBot/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -517,7 +517,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.highlightbot.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nathanklassen.highlightbot;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_STRICT_CONCURRENCY = complete;

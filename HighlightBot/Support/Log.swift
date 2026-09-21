@@ -3,10 +3,10 @@ import OSLog
 
 /// Unified-logging handles for the app, one per pipeline stage.
 ///
-/// Subsystem is `com.highlightbot.app`. Filter in Console.app / `log stream` with
-/// `subsystem == "com.highlightbot.app"` and the category of interest.
+/// Subsystem is `com.nathanklassen.highlightbot`. Filter in Console.app / `log stream` with
+/// `subsystem == "com.nathanklassen.highlightbot"` and the category of interest.
 enum Log {
-    static let subsystem = "com.highlightbot.app"
+    static let subsystem = "com.nathanklassen.highlightbot"
 
     static let capture = Logger(subsystem: subsystem, category: "capture")
     static let recorder = Logger(subsystem: subsystem, category: "recorder")
