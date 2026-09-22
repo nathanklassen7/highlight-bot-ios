@@ -31,6 +31,15 @@ struct ClipPlayerScreen: View {
     @State private var isOverlayVisible = true
     @State private var overlayHideTask: Task<Void, Never>?
     @State private var timeObserver: Any?
+    /// Re-arms `timeObserver` when the playing item changes (loop toggle, clip
+    /// swipe, trim replace, or an `AVPlayerLooper` replica advance).
+    @State private var currentItemObservation: NSKeyValueObservation?
+    /// False after dismiss so a queued item-change callback cannot re-arm the observer.
+    @State private var isPlayerActive = false
+    /// Invalidates seek completions after a newer seek, a scrub start, or a queue rebuild.
+    @State private var seekSession = 0
+    @State private var seekInFlight = false
+    @State private var pendingSeek: PendingSeek?
     @State private var showTagPicker = false
     @State private var showEditor = false
     /// Vertical distance the player has followed a swipe-down; 0 when not dragging.
@@ -134,6 +143,10 @@ struct ClipPlayerScreen: View {
         .onDisappear {
             overlayHideTask?.cancel()
             overlayHideTask = nil
+            isPlayerActive = false
+            currentItemObservation?.invalidate()
+            currentItemObservation = nil
+            cancelSeeks()
             removeTimeObserver()
             player.pause()
             looper?.disableLooping()
@@ -318,16 +331,20 @@ struct ClipPlayerScreen: View {
             Slider(
                 value: Binding(
                     get: { currentTime },
-                    set: { seek(to: $0, preview: true) }
+                    // Ignore writes while the thumb is following playback. A refresh
+                    // that pushes the bound value back through `set` would seek and
+                    // suspend the time observer.
+                    set: { newValue in
+                        guard isScrubbing else { return }
+                        seek(to: newValue, preview: true)
+                    }
                 ),
                 in: 0...scrubDuration
             ) { editing in
-                isScrubbing = editing
                 if editing {
-                    player.pause()
+                    beginScrub()
                 } else {
-                    seek(to: currentTime, preview: false)
-                    player.rate = rate
+                    endScrub()
                 }
             }
             .tint(.white)
@@ -398,19 +415,32 @@ struct ClipPlayerScreen: View {
 
     private func startPlayback() {
         duration = record.duration
+        isPlayerActive = true
+        startObservingCurrentItem()
         applyLooping()
-        addTimeObserver()
         scheduleOverlayAutoHide()
     }
 
     private func togglePlayback() {
         if isPlaying {
+            cancelSeeks()
             player.pause()
             markPlaybackInactive()
             return
         }
+        // A cancelled slider gesture can leave `isScrubbing` true. Playback is
+        // starting, so the time observer has to be allowed to move the scrubber.
+        let scrubWasActive = isScrubbing
+        isScrubbing = false
         if isAtEnd {
-            seek(to: 0, preview: false)
+            isPlaying = true
+            seek(to: 0, preview: false, resumeAfter: true)
+            return
+        }
+        if scrubWasActive || seekInFlight {
+            isPlaying = true
+            seek(to: currentTime, preview: false, resumeAfter: true)
+            return
         }
         player.rate = rate
         isPlaying = true
@@ -471,7 +501,13 @@ struct ClipPlayerScreen: View {
             .onEnded { value in
                 let axis = dragAxis
                 dragAxis = nil
+                // A swipe that wins over the slider cancels the slider gesture, and
+                // `onEditingChanged(false)` never arrives. Finish the scrub here so
+                // `isScrubbing` cannot stay latched while playback continues.
                 guard !isScrubbing, !isPageTransitioning else {
+                    if isScrubbing {
+                        endScrub()
+                    }
                     dismissDragOffset = 0
                     pageDragOffset = 0
                     pageNeighbors = PageNeighbors()
@@ -624,10 +660,16 @@ struct ClipPlayerScreen: View {
     }
 
     /// Rebuilds the queue: an `AVPlayerLooper` when looping, a single item otherwise.
+    /// The periodic observer is installed only after the new item is in the queue.
+    /// It follows the current item's timeline, so leaving it attached across
+    /// `removeAllItems()` strands the scrubber while the new item plays.
     private func applyLooping() {
+        cancelSeeks()
+        isScrubbing = false
         let item = AVPlayerItem(url: record.fileURL)
         looper?.disableLooping()
         looper = nil
+        removeTimeObserver()
         player.removeAllItems()
         player.actionAtItemEnd = isLooping ? .advance : .pause
         if isLooping {
@@ -635,15 +677,55 @@ struct ClipPlayerScreen: View {
         } else {
             player.insert(item, after: nil)
         }
+        addTimeObserver()
         player.rate = rate
         isPlaying = player.rate != 0
     }
 
     private func applyRate(_ newRate: Float) {
         rate = newRate
+        // Held until the scrub or in-flight seek finishes; that completion applies `rate`.
+        guard !isScrubbing, !seekInFlight else { return }
         // VERIFY: setting `rate` directly resumes playback at that speed; slow rates
         // require `AVPlayerItem.canPlaySlowForward`, which is true for local MP4s.
         player.rate = rate
+        isPlaying = player.rate != 0
+    }
+
+    private func startObservingCurrentItem() {
+        currentItemObservation?.invalidate()
+        currentItemObservation = player.observe(\.currentItem, options: [.new]) { _, _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard self.isPlayerActive else { return }
+                    self.addTimeObserver()
+                }
+            }
+        }
+    }
+
+    private func beginScrub() {
+        isScrubbing = true
+        cancelSeeks()
+        player.pause()
+        isPlaying = false
+    }
+
+    /// Sample-accurate seek, then play. Setting `rate` while the seek is in flight
+    /// interrupts it, and the periodic observer does not reliably resume afterwards.
+    private func endScrub() {
+        guard isScrubbing else { return }
+        isScrubbing = false
+        // Show pause immediately so a tap during the seek cancels it instead of
+        // starting a second resume. `rate` stays 0 until the seek completes.
+        isPlaying = true
+        seek(to: currentTime, preview: false, resumeAfter: true)
+    }
+
+    private func cancelSeeks() {
+        seekSession += 1
+        seekInFlight = false
+        pendingSeek = nil
     }
 
     private func addTimeObserver() {
@@ -652,8 +734,13 @@ struct ClipPlayerScreen: View {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             MainActor.assumeIsolated {
                 let wasPlaying = isPlaying
-                isPlaying = player.timeControlStatus == .playing && player.rate != 0
-                guard !isScrubbing else { return }
+                let playerPlaying = player.timeControlStatus == .playing && player.rate != 0
+                // A resume seek sets `isPlaying` before `rate` is applied. Taking the
+                // player's paused status here would clear that and ignore a pause tap.
+                if !seekInFlight {
+                    isPlaying = playerPlaying
+                }
+                guard !isScrubbing, !seekInFlight else { return }
                 currentTime = seconds(from: time)
                 if let itemDuration = player.currentItem?.duration {
                     let value = seconds(from: itemDuration)
@@ -677,14 +764,47 @@ struct ClipPlayerScreen: View {
         }
     }
 
-    private func seek(to seconds: Double, preview: Bool) {
-        currentTime = min(max(seconds, 0), scrubDuration)
-        let time = CMTime(seconds: currentTime, preferredTimescale: 600)
-        player.seek(
-            to: time,
-            toleranceBefore: preview ? CMTime(seconds: 0.1, preferredTimescale: 600) : .zero,
-            toleranceAfter: preview ? CMTime(seconds: 0.1, preferredTimescale: 600) : .zero
-        )
+    private func seek(to seconds: Double, preview: Bool, resumeAfter: Bool = false) {
+        let clamped = min(max(seconds, 0), scrubDuration)
+        currentTime = clamped
+        let request = PendingSeek(seconds: clamped, preview: preview, resumeAfter: resumeAfter)
+        // One seek at a time. Overlapping seeks cancel each other and leave the
+        // periodic observer suspended while the layer keeps drawing frames.
+        if seekInFlight {
+            pendingSeek = request
+            return
+        }
+        performSeek(request)
+    }
+
+    private func performSeek(_ request: PendingSeek) {
+        seekInFlight = true
+        let session = seekSession
+        let time = CMTime(seconds: request.seconds, preferredTimescale: 600)
+        let tolerance = request.preview ? CMTime(seconds: 0.1, preferredTimescale: 600) : .zero
+        player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard session == self.seekSession else { return }
+                    self.seekInFlight = false
+                    if let pending = self.pendingSeek {
+                        self.pendingSeek = nil
+                        self.performSeek(pending)
+                        return
+                    }
+                    guard self.isPlayerActive else { return }
+                    if !self.isScrubbing {
+                        self.addTimeObserver()
+                    }
+                    guard request.resumeAfter, !self.isScrubbing else { return }
+                    self.player.rate = self.rate
+                    self.isPlaying = true
+                    // `isPlaying` may already be true, so the change handler will not
+                    // schedule the overlay hide. Do it once `rate` is actually non-zero.
+                    self.scheduleOverlayAutoHide()
+                }
+            }
+        }
     }
 
     private func seconds(from time: CMTime) -> Double {
@@ -770,6 +890,13 @@ struct ClipPlayerScreen: View {
             statusMessage = "Delete failed: \(error.localizedDescription)"
         }
     }
+}
+
+/// A scrub or playhead move waiting until the in-flight `AVPlayer.seek` finishes.
+private struct PendingSeek {
+    var seconds: Double
+    var preview: Bool
+    var resumeAfter: Bool
 }
 
 /// The clips on either side of the one playing, in Library order.
