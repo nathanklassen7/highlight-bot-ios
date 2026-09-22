@@ -14,7 +14,8 @@ private enum LibraryMotion {
 }
 
 private enum LibraryLayout {
-    static let horizontalPadding: CGFloat = 8
+    static let horizontalPadding: CGFloat = 4
+    static let gridSpacing: CGFloat = 4
 }
 
 struct LibraryScreen: View {
@@ -28,6 +29,7 @@ struct LibraryScreen: View {
     @State private var isSelecting = false
     @State private var selectedIDs: Set<UUID> = []
     @State private var starredOnly = false
+    @State private var montageOnly = false
     @State private var selectedTagFilters: [String] = []
     @State private var editingTagsFor: ClipRecord?
     @State private var trimmingRecord: ClipRecord?
@@ -35,7 +37,7 @@ struct LibraryScreen: View {
     @State private var montageRequest: MontageRequest?
     @State private var isLandscape = false
 
-    private let columns = [GridItem(.adaptive(minimum: 110), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 110), spacing: LibraryLayout.gridSpacing)]
 
     var body: some View {
         NavigationStack {
@@ -56,7 +58,9 @@ struct LibraryScreen: View {
                                 .monospacedDigit()
                                 .frame(maxWidth: .infinity, alignment: .trailing)
 
-                            filterBar
+                            if showsFilterBar {
+                                filterBar
+                            }
 
                             if filteredClips.isEmpty {
                                 ContentUnavailableView(
@@ -67,7 +71,7 @@ struct LibraryScreen: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 24)
                             } else {
-                                LazyVGrid(columns: columns, spacing: 12) {
+                                LazyVGrid(columns: columns, spacing: LibraryLayout.gridSpacing) {
                                     ForEach(filteredClips) { clip in
                                         let record = clip.record
                                         clipCell(for: record)
@@ -172,11 +176,18 @@ struct LibraryScreen: View {
                 selectedTagFilters = selectedTagFilters.filter { tag in
                     ClipTag.contains(availableFilterTags, tag)
                 }
+                if !hasStarredClips {
+                    starredOnly = false
+                }
+                if !hasMontageClips {
+                    montageOnly = false
+                }
                 if clips.isEmpty {
                     exitSelection()
                 }
             }
             .onChange(of: starredOnly) { _, _ in pruneSelectionToVisible() }
+            .onChange(of: montageOnly) { _, _ in pruneSelectionToVisible() }
             .onChange(of: selectedTagFilters) { _, _ in pruneSelectionToVisible() }
             .onGeometryChange(for: Bool.self) { proxy in
                 proxy.size.width > proxy.size.height
@@ -188,7 +199,8 @@ struct LibraryScreen: View {
 
     private var filteredClips: [Clip] {
         clips.filter { clip in
-            (!starredOnly || clip.isStarred)
+            (!starredFilterActive || clip.isStarred)
+                && (!montageFilterActive || clip.isMontage)
                 && (selectedTagFilters.isEmpty || clip.tags.contains { ClipTag.contains(selectedTagFilters, $0) })
         }
     }
@@ -205,11 +217,28 @@ struct LibraryScreen: View {
         ClipTag.sortedForDisplay(ClipTag.merge([], clips.flatMap(\.tags)))
     }
 
-    private var hasActiveFilters: Bool {
-        starredOnly || !selectedTagFilters.isEmpty
+    private var hasStarredClips: Bool {
+        clips.contains(where: \.isStarred)
     }
 
-    /// Bumps when clip count, tags, or starred state changes so selection and filters stay valid.
+    private var hasMontageClips: Bool {
+        clips.contains(where: \.isMontage)
+    }
+
+    /// The bar is only useful when at least one chip can narrow the grid.
+    private var showsFilterBar: Bool {
+        hasStarredClips || hasMontageClips || !availableFilterTags.isEmpty
+    }
+
+    /// A chip that has nothing left to match is hidden, so it must not keep filtering.
+    private var starredFilterActive: Bool { starredOnly && hasStarredClips }
+    private var montageFilterActive: Bool { montageOnly && hasMontageClips }
+
+    private var hasActiveFilters: Bool {
+        starredFilterActive || montageFilterActive || !selectedTagFilters.isEmpty
+    }
+
+    /// Bumps when clip count, tags, starred, or montage state changes so selection and filters stay valid.
     private var clipsRevision: Int {
         var hasher = Hasher()
         hasher.combine(clips.count)
@@ -217,6 +246,7 @@ struct LibraryScreen: View {
             hasher.combine(clip.id)
             hasher.combine(clip.tags)
             hasher.combine(clip.isStarred)
+            hasher.combine(clip.isMontage)
         }
         return hasher.finalize()
     }
@@ -225,21 +255,27 @@ struct LibraryScreen: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Button {
-                    starredOnly.toggle()
-                } label: {
-                    Label("Starred", systemImage: starredOnly ? "star.fill" : "star")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(starredOnly ? AppPalette.onFill : .primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            starredOnly ? Color.yellow : Color.secondary.opacity(0.15),
-                            in: Capsule()
-                        )
+                if hasStarredClips {
+                    filterChip(
+                        title: "Starred",
+                        systemImage: starredOnly ? "star.fill" : "star",
+                        isOn: starredOnly,
+                        fill: .yellow
+                    ) {
+                        starredOnly.toggle()
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(starredOnly ? .isSelected : [])
+
+                if hasMontageClips {
+                    filterChip(
+                        title: "Montage",
+                        systemImage: montageOnly ? "film.stack.fill" : "film.stack",
+                        isOn: montageOnly,
+                        fill: AppPalette.accent
+                    ) {
+                        montageOnly.toggle()
+                    }
+                }
 
                 ForEach(availableFilterTags, id: \.self) { tag in
                     let selected = ClipTag.contains(selectedTagFilters, tag)
@@ -255,6 +291,7 @@ struct LibraryScreen: View {
                 if hasActiveFilters {
                     Button {
                         starredOnly = false
+                        montageOnly = false
                         selectedTagFilters = []
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -271,6 +308,25 @@ struct LibraryScreen: View {
             .padding(.horizontal, LibraryLayout.horizontalPadding)
         }
         .padding(.horizontal, -LibraryLayout.horizontalPadding)
+    }
+
+    private func filterChip(
+        title: String,
+        systemImage: String,
+        isOn: Bool,
+        fill: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(isOn ? AppPalette.onFill : .primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isOn ? fill : Color.secondary.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private func pruneSelectionToVisible() {
@@ -657,19 +713,24 @@ struct LibraryScreen: View {
     }
 }
 
-/// One grid cell: thumbnail, duration, relative time, and the trigger source
-/// icon (a film-stack glyph for montages).
+/// One grid cell: thumbnail with duration and tags overlaid. No caption under the tile.
 struct ClipCell: View {
     let record: ClipRecord
     var isSelecting = false
     var isSelected = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ThumbnailImage(fileName: record.thumbnailFileName)
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .bottomTrailing) {
+        ThumbnailImage(fileName: record.thumbnailFileName)
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(alignment: .bottom) {
+                // One row so the tag pill can take leftover width and
+                // ellipsize instead of running under the duration badge.
+                HStack(alignment: .bottom, spacing: 6) {
+                    libraryTagBadge
+                        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                        .layoutPriority(0)
+                    Spacer(minLength: 0)
                     Text(Duration.seconds(record.duration).formatted(.time(pattern: .minuteSecond)))
                         .font(.caption2.weight(.semibold))
                         .monospacedDigit()
@@ -677,74 +738,71 @@ struct ClipCell: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
                         .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
-                        .padding(6)
+                        .layoutPriority(1)
                 }
-                .overlay(alignment: .bottomLeading) {
-                    // Over the thumbnail so tags never change the cell height.
-                    TagPillRow(tags: record.tags, limit: 1)
-                        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
-                        .padding(6)
-                }
-                .overlay(alignment: .topLeading) {
-                    if isSelecting {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(
-                                isSelected ? Color.white : Color.white.opacity(0.95),
-                                isSelected ? AppPalette.accent : Color.black.opacity(0.35)
-                            )
-                            .padding(8)
-                            .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if isSelecting && record.isStarred {
-                        Image(systemName: "star.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.yellow)
-                            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
-                            .padding(8)
-                    }
-                }
-                .overlay {
-                    if isSelecting && isSelected {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(AppPalette.accent, lineWidth: 3)
-                    }
-                }
-
-            HStack(spacing: 6) {
-                Image(systemName: record.isMontage ? "film.stack" : Self.symbol(for: record.triggerSource))
-                    .foregroundStyle(.secondary)
-                    // The trigger glyph was never read out; only the montage one carries meaning.
-                    .accessibilityHidden(!record.isMontage)
-                    .accessibilityLabel("Montage")
-                Text(record.createdAt, format: .relative(presentation: .named))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Text(ByteCountFormatter.string(fromByteCount: record.sizeBytes, countStyle: .file))
-                    .foregroundStyle(.tertiary)
+                .padding(6)
             }
-            .font(.caption)
-            .lineLimit(1)
-        }
-        .animation(LibraryMotion.clipSelection, value: isSelected)
-        .accessibilityElement(children: .combine)
+            .overlay(alignment: .topLeading) {
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(
+                            isSelected ? Color.white : Color.white.opacity(0.95),
+                            isSelected ? AppPalette.accent : Color.black.opacity(0.35)
+                        )
+                        .padding(8)
+                        .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isSelecting && record.isStarred {
+                    Image(systemName: "star.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.yellow)
+                        .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+                        .padding(8)
+                }
+            }
+            .overlay {
+                if isSelecting && isSelected {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(AppPalette.accent, lineWidth: 3)
+                }
+            }
+            .animation(LibraryMotion.clipSelection, value: isSelected)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityDescription)
     }
 
-    // VERIFY: "camera.shutter.button.fill" and "photo.badge.plus" (used in menus)
-    // exist in SF Symbols 5 / iOS 17; a missing name renders empty, not a crash.
-    static func symbol(for source: TriggerSourceID) -> String {
-        switch source {
-        case .tap: "hand.tap.fill"
-        case .hardwareButton: "camera.shutter.button.fill"
-        case .ui: "rectangle.and.hand.point.up.left.fill"
-        case .voice: "waveform"
-        case .vision: "eye.fill"
-        case .system: "gearshape.fill"
-        default: "questionmark.circle"
+    /// Single tag shows its name (truncated if needed). Multiple tags collapse to a count.
+    @ViewBuilder
+    private var libraryTagBadge: some View {
+        if record.tags.count == 1, let tag = record.tags.first {
+            TagPill(tag: tag, size: .compact)
+        } else if record.tags.count > 1 {
+            Text("\(record.tags.count) tags")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppPalette.onFill)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(TagStyle.custom, in: Capsule())
+                .accessibilityLabel(record.tags.joined(separator: ", "))
         }
+    }
+
+    private var accessibilityDescription: String {
+        var parts: [String] = []
+        if record.isMontage {
+            parts.append("Montage")
+        }
+        parts.append(record.createdAt.formatted(.relative(presentation: .named)))
+        parts.append(Duration.seconds(record.duration).formatted(.time(pattern: .minuteSecond)))
+        if !record.tags.isEmpty {
+            parts.append(record.tags.joined(separator: ", "))
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

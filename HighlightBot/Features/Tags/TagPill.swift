@@ -21,6 +21,8 @@ struct TagPill: View {
         HStack(spacing: 4) {
             Text(tag)
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(minWidth: 0)
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
@@ -36,6 +38,9 @@ struct TagPill: View {
         .padding(.horizontal, size == .compact ? 8 : 12)
         .padding(.vertical, size == .compact ? 3 : 7)
         .background(TagStyle.color(for: tag).opacity(isSelected ? 1 : 0.45), in: Capsule())
+        // Let parent width constraints shrink the pill so long tags ellipsize
+        // instead of colliding with neighboring chrome (e.g. clip duration).
+        .frame(minWidth: 0, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(onRemove == nil ? Text(tag) : Text("\(tag) tag"))
     }

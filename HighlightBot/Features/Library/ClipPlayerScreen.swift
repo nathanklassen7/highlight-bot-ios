@@ -267,25 +267,28 @@ struct ClipPlayerScreen: View {
                 .foregroundStyle(.white)
 
                 HStack(spacing: 6) {
-                    TagPillRow(tags: record.tags, limit: 3, size: .compact)
                     Button {
                         showTagPicker = true
                     } label: {
-                        Group {
-                            if record.tags.isEmpty {
-                                Label("Add tags", systemImage: "tag")
-                                    .labelStyle(.titleAndIcon)
-                            } else {
-                                Label("Edit", systemImage: "tag")
-                                    .labelStyle(.iconOnly)
+                        HStack(spacing: 6) {
+                            TagPillRow(tags: record.tags, limit: 3, size: .compact)
+                            Group {
+                                if record.tags.isEmpty {
+                                    Label("Add tags", systemImage: "tag")
+                                        .labelStyle(.titleAndIcon)
+                                } else {
+                                    Label("Edit", systemImage: "tag")
+                                        .labelStyle(.iconOnly)
+                                }
                             }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.55), in: Capsule())
                         }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.black.opacity(0.55), in: Capsule())
                     }
-                    .accessibilityLabel("Edit tags")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(record.tags.isEmpty ? "Add tags" : "Edit tags")
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.white)
