@@ -76,7 +76,7 @@ A completed analysis is a `BallTrack` (Codable): version, detector name, frame r
 
 ### 6. Coordinates: normalised, display-oriented, top-left origin
 
-All positions are normalised to 0…1 of the **displayed** frame with the origin top-left. Vision reports bottom-left origin; the detector converts. Saved clips carry a `preferredTransform` (0° or 180° for this landscape-only app); `ClipTrackRunner` maps stored-frame coordinates through the transform so consumers never see it. For live frames the same helper takes the `captureRotationAngle`.
+All positions are normalised to 0…1 of the **displayed** frame with the origin top-left. Vision reports bottom-left origin; the detector converts. Saved clips carry a `preferredTransform` (0°, 90°, 180°, or 270°); `ClipTrackRunner` maps stored-frame coordinates through the transform so consumers never see it. For live frames the same helper takes the `captureRotationAngle`.
 
 ### 7. Overlay rendering
 

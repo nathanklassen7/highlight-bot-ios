@@ -35,7 +35,7 @@ struct LibraryScreen: View {
     @State private var montageRequest: MontageRequest?
     @State private var isLandscape = false
 
-    private let columns = [GridItem(.adaptive(minimum: 160), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 110), spacing: 12)]
 
     var body: some View {
         NavigationStack {
@@ -681,7 +681,7 @@ struct ClipCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ThumbnailImage(fileName: record.thumbnailFileName)
-                .aspectRatio(16 / 9, contentMode: .fit)
+                .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
                     Text(Duration.seconds(record.duration).formatted(.time(pattern: .minuteSecond)))

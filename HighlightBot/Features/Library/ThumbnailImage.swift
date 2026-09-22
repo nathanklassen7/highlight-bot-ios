@@ -20,31 +20,36 @@ struct ThumbnailImage: View {
 
     private static let cache = NSCache<NSString, UIImage>()
 
+    // The image sits in an overlay rather than a ZStack: a `.fill` image
+    // reports a size bigger than the space it was offered on one axis, and a
+    // ZStack would adopt that size, so the view spilled past whatever frame
+    // the caller clipped it to. An overlay cannot change the black backdrop's
+    // size, which is the one the caller asked for.
     var body: some View {
-        ZStack {
-            Color.black
-            if let image = displayedImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-            } else {
-                Image(systemName: "film")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.4))
+        Color.black
+            .overlay {
+                if let image = displayedImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                } else {
+                    Image(systemName: "film")
+                        .font(.title2)
+                        .foregroundStyle(.white.opacity(0.4))
+                }
             }
-        }
-        .clipped()
-        .task(id: fileName) {
-            if let cached = Self.cached(fileName) {
-                loaded = (fileName, cached)
-                return
+            .clipped()
+            .task(id: fileName) {
+                if let cached = Self.cached(fileName) {
+                    loaded = (fileName, cached)
+                    return
+                }
+                let image = await Self.load(fileName)
+                if let image, let fileName {
+                    Self.cache.setObject(image, forKey: fileName as NSString)
+                }
+                loaded = (fileName, image)
             }
-            let image = await Self.load(fileName)
-            if let image, let fileName {
-                Self.cache.setObject(image, forKey: fileName as NSString)
-            }
-            loaded = (fileName, image)
-        }
     }
 
     /// Cache first so a change of `fileName` can render without a frame of

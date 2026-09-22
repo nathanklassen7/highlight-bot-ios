@@ -48,9 +48,9 @@ struct RootView: View {
             }
         }
         .statusBarHidden(selectedTab == .record)
-        .onAppear { applyOrientation(for: selectedTab) }
-        .onChange(of: selectedTab) { _, tab in
-            applyOrientation(for: tab)
+        .onAppear { applyOrientation(recording: container.sessionState.isRecording) }
+        .onChange(of: selectedTab) { _, _ in
+            applyOrientation(recording: container.sessionState.isRecording)
         }
         .onChange(of: container.sessionState.isRecording) { _, isRecording in
             if isRecording {
@@ -58,7 +58,7 @@ struct RootView: View {
             } else {
                 showLibraryIfRequested()
             }
-            applyOrientation(for: isRecording ? .record : selectedTab)
+            applyOrientation(recording: isRecording)
         }
         .onChange(of: container.pendingLibraryClip) { _, _ in
             showLibraryIfRequested()
@@ -138,11 +138,28 @@ struct RootView: View {
         selectedTab = .library
     }
 
-    private func applyOrientation(for tab: Tab) {
-        if tab == .record {
-            InterfaceOrientationLock.apply(.landscape, forcing: .landscape)
-        } else {
+    /// Recording pins the interface to wherever the phone already is. The
+    /// writer's transform is stamped once per session, so a rotation mid-clip
+    /// could not reach the file; freezing the UI keeps the two honest.
+    private func applyOrientation(recording: Bool) {
+        guard recording else {
             InterfaceOrientationLock.apply(.allButUpsideDown)
+            return
+        }
+        InterfaceOrientationLock.apply(Self.currentOrientationMask())
+    }
+
+    /// Falls back to the unrestricted mask when no scene is up yet, so a
+    /// missing scene cannot pin the app to a guess.
+    private static func currentOrientationMask() -> UIInterfaceOrientationMask {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        switch scene?.interfaceOrientation {
+        case .portrait: return .portrait
+        case .portraitUpsideDown: return .portraitUpsideDown
+        case .landscapeLeft: return .landscapeLeft
+        case .landscapeRight: return .landscapeRight
+        default: return .allButUpsideDown
         }
     }
 }

@@ -25,6 +25,9 @@ struct PipelineMetrics: Sendable, Equatable {
     var thermalState: ProcessInfo.ThermalState
     var freeBytes: Int64
     var currentFrameRate: Int
+    /// Angle stamped into the file transform, degrees. Frozen while recording,
+    /// so a sideways clip shows up here before anyone opens the file.
+    var rotationDegrees: Int
     var sessionID: SessionID?
 
     static let zero = PipelineMetrics(
@@ -40,6 +43,7 @@ struct PipelineMetrics: Sendable, Equatable {
         thermalState: .nominal,
         freeBytes: 0,
         currentFrameRate: 0,
+        rotationDegrees: 0,
         sessionID: nil
     )
 }
@@ -212,6 +216,11 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // Camera must be configured with the current config and running.
         try await startPreview()
 
+        // Freeze before the angle is read, never after: the writer stamps the
+        // transform once and the ring holds one initialization segment per
+        // session, so the angle below has to hold for the whole recording.
+        source.setRotationFrozen(true)
+
         let recorder = SegmentedRecorder(
             config: config,
             queue: recorderQueue,
@@ -253,6 +262,9 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // The camera keeps running so the viewfinder stays live; only the
         // recorder detaches.
         source.setConsumer(nil)
+        // Unconditional: a freeze that outlived its session would leave the
+        // preview stuck sideways with nothing to unstick it.
+        source.setRotationFrozen(false)
         await recorder?.stop()
         do {
             try await ring.clear()
@@ -317,7 +329,9 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             fileName: exported.fileURL.lastPathComponent,
             thumbnailFileName: exported.thumbnailURL.map { "Thumbnails/" + $0.lastPathComponent },
             triggerSource: triggerSource,
-            sizeBytes: exported.sizeBytes
+            sizeBytes: exported.sizeBytes,
+            videoWidth: exported.videoWidth,
+            videoHeight: exported.videoHeight
         )
     }
 
@@ -457,9 +471,10 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             thermalState: ProcessInfo.processInfo.thermalState,
             freeBytes: StorageMonitor.freeBytes(at: AppDirectories.ring),
             currentFrameRate: frameRate,
+            rotationDegrees: Int(source.captureRotationAngle.rounded()),
             sessionID: recorder?.currentSessionID
         )
-        Log.session.debug("metrics frames=\(metrics.capturedFrames) dropped=\(metrics.droppedFrames) analyzerDropped=\(metrics.analyzerDroppedFrames) buffered=\(metrics.bufferedSeconds, format: .fixed(precision: 1))s cbMicros=\(metrics.lastCallbackMicros, format: .fixed(precision: 0)) cbMaxMicros=\(counters?.maxCallbackMicros ?? 0, format: .fixed(precision: 0)) writeMs=\(metrics.lastSegmentWriteMillis, format: .fixed(precision: 1)) skippedVideo=\(metrics.skippedVideoAppends) skippedAudio=\(metrics.skippedAudioAppends) fps=\(metrics.currentFrameRate) thermal=\(metrics.thermalState.rawValue)")
+        Log.session.debug("metrics frames=\(metrics.capturedFrames) dropped=\(metrics.droppedFrames) analyzerDropped=\(metrics.analyzerDroppedFrames) buffered=\(metrics.bufferedSeconds, format: .fixed(precision: 1))s cbMicros=\(metrics.lastCallbackMicros, format: .fixed(precision: 0)) cbMaxMicros=\(counters?.maxCallbackMicros ?? 0, format: .fixed(precision: 0)) writeMs=\(metrics.lastSegmentWriteMillis, format: .fixed(precision: 1)) skippedVideo=\(metrics.skippedVideoAppends) skippedAudio=\(metrics.skippedAudioAppends) fps=\(metrics.currentFrameRate) rotation=\(metrics.rotationDegrees) thermal=\(metrics.thermalState.rawValue)")
         return metrics
     }
 

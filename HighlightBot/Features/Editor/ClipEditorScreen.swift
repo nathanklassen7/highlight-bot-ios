@@ -763,6 +763,8 @@ struct ClipEditorScreen: View {
                         thumbnailFileName: exported.thumbnailFileName,
                         triggerSource: record.triggerSource,
                         sizeBytes: exported.sizeBytes,
+                        videoWidth: exported.videoWidth,
+                        videoHeight: exported.videoHeight,
                         tags: record.tags,
                         isStarred: record.isStarred,
                         isMontage: record.isMontage

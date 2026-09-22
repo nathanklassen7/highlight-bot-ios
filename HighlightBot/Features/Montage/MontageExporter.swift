@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreGraphics
 import Foundation
 import HighlightCore
 
@@ -42,11 +43,15 @@ final class MontageExporter: Sendable {
     }
 
     /// Writes `clipsDirectory/<baseName>.mp4`. Source files are not modified.
+    /// `orientation` is the one the montage keeps — the draft's
+    /// `resolvedOrientation` — and decides the render frame; items in the
+    /// other orientation get black bars.
     /// `onProgress` is called on an arbitrary thread as the encode advances,
     /// first with the up-front estimate, then with refined remaining times.
     func export(
         _ items: [MontageItem],
         baseName: String,
+        keeping orientation: ClipOrientation,
         onProgress: @escaping @Sendable (MontageExportProgress) -> Void = { _ in }
     ) async throws -> ExportedClip {
         guard items.count >= MontageDraft.minimumClipCount else {
@@ -68,9 +73,13 @@ final class MontageExporter: Sendable {
         let outputURL = clipsDirectory.appending(path: baseName + ".mp4")
         let expectedDuration = items.reduce(0) { $0 + $1.outputDuration }
         let preset = await ClipTrimmer.preset(for: AVURLAsset(url: items[0].clip.fileURL))
-        Log.export.info("Exporting montage of \(items.count) clips (\(expectedDuration, format: .fixed(precision: 2))s) as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+        let frame = MontageFraming.renderSize(for: items, keeping: orientation)
+        Log.export.info("Exporting montage of \(items.count) clips (\(expectedDuration, format: .fixed(precision: 2))s) as \(baseName, privacy: .public) (\(preset, privacy: .public), \(orientation.rawValue, privacy: .public) \(frame.width)x\(frame.height))")
 
-        let built = try await MontageComposition.build(items)
+        let built = try await MontageComposition.build(
+            items,
+            renderSize: CGSize(width: frame.width, height: frame.height)
+        )
         // A cancel during the build must not start the encode.
         try Task.checkCancellation()
         let estimate = ExportTimeEstimate(workloads: built.workloads, secondsPerUnit: ExportSpeedStore.secondsPerUnit())
@@ -97,8 +106,9 @@ final class MontageExporter: Sendable {
         }
         onProgress(MontageExportProgress(fraction: Self.encodeEnd, estimatedSecondsRemaining: 0))
 
-        // Read timing and the thumbnail from the finished file so the record
-        // matches what was actually written.
+        // Read timing, size, and the thumbnail from the finished file so the
+        // record matches what was actually written rather than what was asked
+        // for; the oriented size agrees with `frame` by construction.
         let output = AVURLAsset(url: outputURL)
         let duration = await ClipTrimmer.duration(of: output) ?? expectedDuration
         let thumbnailURL = await ClipExporter.writeThumbnail(
@@ -108,11 +118,19 @@ final class MontageExporter: Sendable {
             clipsDirectory: clipsDirectory
         )
         let sizeBytes = ClipExporter.fileSize(at: outputURL)
+        let size = await ClipExporter.orientedSize(of: output)
         onProgress(MontageExportProgress(fraction: 1, estimatedSecondsRemaining: 0))
 
         let seconds = (clock.now - started).timeInterval
         Log.export.info("Montage \(baseName, privacy: .public) took \(seconds, format: .fixed(precision: 3))s (encode \(encodeSeconds, format: .fixed(precision: 3))s, estimate \(estimate.totalSeconds, format: .fixed(precision: 1))s)")
-        return ExportedClip(fileURL: outputURL, thumbnailURL: thumbnailURL, duration: duration, sizeBytes: sizeBytes)
+        return ExportedClip(
+            fileURL: outputURL,
+            thumbnailURL: thumbnailURL,
+            duration: duration,
+            sizeBytes: sizeBytes,
+            videoWidth: size.width,
+            videoHeight: size.height
+        )
     }
 
     /// Share of the overall bar given to the encode; the rest is build and thumbnail.

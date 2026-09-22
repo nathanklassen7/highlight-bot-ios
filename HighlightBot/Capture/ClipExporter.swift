@@ -12,6 +12,9 @@ struct ExportedClip: Sendable {
     let thumbnailURL: URL?
     let duration: TimeInterval
     let sizeBytes: Int64
+    /// Oriented pixel size, as `ClipRecord` stores it; `0` when it could not be read.
+    let videoWidth: Int
+    let videoHeight: Int
 
     /// Thumbnail name relative to the clips directory, as `ClipRecord` stores it.
     var thumbnailFileName: String? {
@@ -42,7 +45,7 @@ enum ExportError: LocalizedError {
 /// Steps: stream-concatenate the segment files into `tmp/export/<base>.mp4`
 /// (an fMP4 byte stream is a valid MP4), then passthrough-export to
 /// `clipsDirectory/<base>.mp4` (no re-encode, typically <1 s) while, in
-/// parallel, generating a 640×360 thumbnail at 0.5 s from the same
+/// parallel, generating a thumbnail at 0.5 s from the same
 /// concatenated stream — the decoder spin-up overlaps the export instead of
 /// following it. If passthrough fails, fall back to a re-encode with
 /// `AVAssetExportPresetHighestQuality` and log a warning.
@@ -91,10 +94,19 @@ final class ClipExporter: Sendable {
         }
         let thumbnailURL = await thumbnail
         let sizeBytes = Self.fileSize(at: outputURL)
+        // Passthrough keeps the plan's timing and the concatenated stream's
+        // track header, so reparsing the output for its duration or oriented
+        // size is redundant; `asset` already has both loaded.
+        let size = await Self.orientedSize(of: asset)
 
-        // Passthrough keeps the plan's timing, so reparsing the output for its
-        // duration is redundant.
-        return ExportedClip(fileURL: outputURL, thumbnailURL: thumbnailURL, duration: plan.duration, sizeBytes: sizeBytes)
+        return ExportedClip(
+            fileURL: outputURL,
+            thumbnailURL: thumbnailURL,
+            duration: plan.duration,
+            sizeBytes: sizeBytes,
+            videoWidth: size.width,
+            videoHeight: size.height
+        )
     }
 
     // MARK: - Steps
@@ -221,9 +233,11 @@ final class ClipExporter: Sendable {
         }
     }
 
-    /// Best-effort 640×360 JPEG at `seconds`, written to `clipsDirectory/Thumbnails/<baseName>.jpg`.
-    /// Returns nil (and logs) rather than failing the export when thumbnail
-    /// generation has trouble. Shared with `ClipTrimmer`.
+    /// Best-effort full-frame JPEG at `seconds`, written to
+    /// `clipsDirectory/Thumbnails/<baseName>.jpg`. The 960×960 bound puts the
+    /// long edge at 960 either way up, so a portrait frame still fills a square
+    /// Library cell. Returns nil (and logs) rather than failing the export when
+    /// thumbnail generation has trouble. Shared with `ClipTrimmer`.
     static func writeThumbnail(
         asset: AVAsset,
         at seconds: Double = 0.5,
@@ -232,7 +246,7 @@ final class ClipExporter: Sendable {
     ) async -> URL? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 640, height: 360)
+        generator.maximumSize = CGSize(width: 960, height: 960)
         do {
             let result = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600))
             guard let data = UIImage(cgImage: result.image).jpegData(compressionQuality: 0.8) else {
@@ -247,6 +261,26 @@ final class ClipExporter: Sendable {
         } catch {
             Log.export.error("Thumbnail failed for \(baseName, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
+        }
+    }
+
+    /// Pixel size of the first video track after its `preferredTransform`, so a
+    /// portrait 1080p clip reads 1080×1920. Returns `(0, 0)` and logs rather
+    /// than throwing: a missing size must never fail an export, and
+    /// `ClipOrientation` treats it as landscape. Shared with `ClipTrimmer` and
+    /// `MontageExporter`.
+    static func orientedSize(of asset: AVAsset) async -> (width: Int, height: Int) {
+        do {
+            guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+                Log.export.error("Oriented size: no video track")
+                return (0, 0)
+            }
+            let (naturalSize, transform) = try await track.load(.naturalSize, .preferredTransform)
+            let oriented = naturalSize.applying(transform)
+            return (Int(abs(oriented.width).rounded()), Int(abs(oriented.height).rounded()))
+        } catch {
+            Log.export.error("Oriented size failed: \(error.localizedDescription, privacy: .public)")
+            return (0, 0)
         }
     }
 

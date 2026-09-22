@@ -13,6 +13,11 @@ final class Clip {
     var thumbnailFileName: String?
     var triggerSource: String
     var sizeBytes: Int64
+    /// Oriented pixel size, after the capture transform. Defaults let SwiftData
+    /// add the columns to stores that predate them; clips saved before portrait
+    /// support keep 0 and read as landscape.
+    var videoWidth: Int = 0
+    var videoHeight: Int = 0
     /// User tags. Defaults let SwiftData add the column to stores that predate it.
     var tags: [String] = []
     /// User favourite flag. Same migration note as `tags`.
@@ -28,6 +33,8 @@ final class Clip {
         thumbnailFileName = record.thumbnailFileName
         triggerSource = record.triggerSource.rawValue
         sizeBytes = record.sizeBytes
+        videoWidth = record.videoWidth
+        videoHeight = record.videoHeight
         tags = record.tags
         isStarred = record.isStarred
         isMontage = record.isMontage
@@ -43,6 +50,8 @@ final class Clip {
             thumbnailFileName: thumbnailFileName,
             triggerSource: TriggerSourceID(rawValue: triggerSource),
             sizeBytes: sizeBytes,
+            videoWidth: videoWidth,
+            videoHeight: videoHeight,
             tags: tags,
             isStarred: isStarred,
             isMontage: isMontage

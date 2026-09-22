@@ -22,9 +22,13 @@ import HighlightCore
 ///
 /// A video composition carries each item's orientation: one instruction per
 /// item whose layer transform applies the source's `preferredTransform` and
-/// letterboxes it into the first item's oriented frame. A single
+/// letterboxes it into the caller's `renderSize`. A single
 /// `preferredTransform` on the track would render mixed portrait/landscape
 /// sources wrong.
+///
+/// The caller picks `renderSize` (`MontageFraming.renderSize(for:keeping:)`),
+/// so mixed 720p and 1080p sources of the same orientation render at the
+/// largest of them rather than at whichever the user happened to order first.
 enum MontageComposition {
     struct Built {
         let composition: AVMutableComposition
@@ -35,7 +39,9 @@ enum MontageComposition {
 
     static let timescale: CMTimeScale = 600
 
-    static func build(_ items: [MontageItem]) async throws -> Built {
+    /// `renderSize` is the finished montage's frame; every item is scaled and
+    /// centred into it.
+    static func build(_ items: [MontageItem], renderSize: CGSize) async throws -> Built {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw ExportError.exportFailed("Could not add a video track to the composition.")
@@ -43,7 +49,6 @@ enum MontageComposition {
         var audio: AVMutableCompositionTrack?
 
         var cursor = CMTime.zero
-        var renderSize: CGSize?
         var frameDuration = CMTime(value: 1, timescale: 30)
         var instructions: [AVMutableVideoCompositionInstruction] = []
         var workloads: [ExportWorkload] = []
@@ -58,17 +63,9 @@ enum MontageComposition {
                 .naturalSize, .preferredTransform, .nominalFrameRate, .timeRange
             )
 
-            // The first item decides the output frame and frame rate.
-            let frame: CGSize
-            if let existing = renderSize {
-                frame = existing
-            } else {
-                let oriented = CGRect(origin: .zero, size: naturalSize).applying(transform)
-                frame = CGSize(width: abs(oriented.width), height: abs(oriented.height))
-                renderSize = frame
-                if frameRate > 0 {
-                    frameDuration = CMTime(value: 1, timescale: max(1, CMTimeScale(frameRate.rounded())))
-                }
+            // The first item still decides the frame rate.
+            if index == 0, frameRate > 0 {
+                frameDuration = CMTime(value: 1, timescale: max(1, CMTimeScale(frameRate.rounded())))
             }
 
             let edit = item.edit
@@ -125,23 +122,23 @@ enum MontageComposition {
             cursor = try await composition.load(.duration)
 
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
-            layer.setTransform(fitTransform(naturalSize: naturalSize, preferredTransform: transform, into: frame), at: itemStart)
+            layer.setTransform(fitTransform(naturalSize: naturalSize, preferredTransform: transform, into: renderSize), at: itemStart)
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: itemStart, end: cursor)
             instruction.layerInstructions = [layer]
             instructions.append(instruction)
-            // Every item is re-encoded at the first item's frame, so the
-            // render size prices the encode, not the source's natural size.
+            // Every item is re-encoded at the output frame, so the render size
+            // prices the encode, not the source's natural size.
             workloads.append(ExportWorkload(
                 outputSeconds: predictedDuration.seconds,
                 frameRate: Double(frameRate),
-                pixelCount: Double(frame.width * frame.height),
+                pixelCount: Double(renderSize.width * renderSize.height),
                 retimedSeconds: retimedSeconds
             ))
         }
 
         let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize ?? CGSize(width: 1920, height: 1080)
+        videoComposition.renderSize = renderSize
         videoComposition.frameDuration = frameDuration
         videoComposition.instructions = instructions
         return Built(composition: composition, videoComposition: videoComposition, workloads: workloads)

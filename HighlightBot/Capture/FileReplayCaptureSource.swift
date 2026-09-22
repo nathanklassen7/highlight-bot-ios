@@ -51,6 +51,7 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     private var videoTrack: AVAssetTrack?
     private var audioTrack: AVAssetTrack?
     private var assetDuration: CMTime = .invalid
+    private var rotationAngle: CGFloat = 0
 
     init(fileURL: URL, loop: Bool = true) {
         self.fileURL = fileURL
@@ -111,12 +112,14 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
         let duration = try await asset.load(.duration)
         let naturalSize = try await video.load(.naturalSize)
         let nominalFPS = try await video.load(.nominalFrameRate)
+        let preferredTransform = try await video.load(.preferredTransform)
 
         let requested: RecordingConfig = lock.withLock {
             self.asset = asset
             videoTrack = video
             audioTrack = config.recordAudio ? audio : nil
             assetDuration = duration
+            rotationAngle = Self.rotationDegrees(of: preferredTransform)
             stopRequested = false
             return config
         }
@@ -166,11 +169,22 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     /// No torch on a replayed file.
     func setTorch(_ on: Bool) async {}
 
-    /// Replayed files are already upright.
-    var captureRotationAngle: CGFloat { 0 }
+    /// A replayed file has one fixed orientation, so there is nothing to pin.
+    func setRotationFrozen(_ frozen: Bool) {}
+
+    /// The file's own rotation, read in `start()`. Zero until then.
+    var captureRotationAngle: CGFloat { lock.withLock { rotationAngle } }
 
     /// Replay re-stamps every sample onto the host clock.
     var captureClock: CMClock { CMClockGetHostTimeClock() }
+
+    /// `AVAssetReader` hands back frames in stored orientation and drops the
+    /// track transform, so a portrait file arrives here looking landscape. Its
+    /// rotation has to reach the writer the same way the camera's does.
+    private static func rotationDegrees(of transform: CGAffineTransform) -> CGFloat {
+        let degrees = atan2(transform.b, transform.a) * 180 / .pi
+        return CGFloat(CaptureRotation.snapped(Double(degrees)))
+    }
 
     // MARK: - Replay loop (dedicated thread)
 

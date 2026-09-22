@@ -62,7 +62,13 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     @MainActor private weak var previewLayer: AVCaptureVideoPreviewLayer?
     @MainActor private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     @MainActor private var rotationObservation: NSKeyValueObservation?
-    private let rotation = OSAllocatedUnfairLock<CGFloat>(initialState: 0)
+    /// Angle and freeze flag share one lock so a reader can never see the
+    /// angle move after the freeze that was supposed to pin it.
+    private struct Rotation: Sendable {
+        var angle: CGFloat = 0
+        var isFrozen = false
+    }
+    private let rotation = OSAllocatedUnfairLock<Rotation>(initialState: Rotation())
 
     init() {
         let (stream, continuation) = AsyncStream.makeStream(of: CaptureEvent.self, bufferingPolicy: .bufferingNewest(16))
@@ -97,7 +103,19 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     }
 
     var captureRotationAngle: CGFloat {
-        rotation.withLock { $0 }
+        rotation.withLock { $0.angle }
+    }
+
+    func setRotationFrozen(_ frozen: Bool) {
+        let changed = rotation.withLock { state -> Bool in
+            defer { state.isFrozen = frozen }
+            return state.isFrozen != frozen
+        }
+        // Nothing followed the horizon while frozen, so the preview is stale by
+        // however far the phone turned; pull it forward instead of waiting for
+        // the next rotation event.
+        guard changed, !frozen else { return }
+        Task { @MainActor [weak self] in self?.catchUpRotation() }
     }
 
     var captureClock: CMClock {
@@ -109,47 +127,48 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     @MainActor
     private func installRotationCoordinator(device: AVCaptureDevice) {
         if let existing = rotationCoordinator, existing.device == device, previewLayer != nil {
-            applyPreviewRotation(existing.videoRotationAngleForHorizonLevelPreview)
+            applyRotation(from: existing)
             return
         }
         rotationObservation?.invalidate()
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
         rotationCoordinator = coordinator
-        applyPreviewRotation(coordinator.videoRotationAngleForHorizonLevelPreview)
-        let initialCapture = Self.landscapeAngle(coordinator.videoRotationAngleForHorizonLevelCapture)
-        rotation.withLock { $0 = initialCapture }
+        applyRotation(from: coordinator)
         rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coordinator, _ in
             let preview = coordinator.videoRotationAngleForHorizonLevelPreview
             let capture = coordinator.videoRotationAngleForHorizonLevelCapture
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.applyPreviewRotation(preview)
-                self.rotation.withLock { current in
-                    current = Self.landscapeAngle(capture, last: current)
-                }
+                self?.applyRotation(preview: preview, capture: capture)
             }
         }
     }
 
     @MainActor
-    private func applyPreviewRotation(_ angle: CGFloat) {
-        let landscape = rotation.withLock { current in
-            let snapped = Self.landscapeAngle(angle, last: current)
-            return snapped
-        }
-        guard let connection = previewLayer?.connection,
-              connection.isVideoRotationAngleSupported(landscape) else { return }
-        connection.videoRotationAngle = landscape
+    private func applyRotation(from coordinator: AVCaptureDevice.RotationCoordinator) {
+        applyRotation(preview: coordinator.videoRotationAngleForHorizonLevelPreview,
+                      capture: coordinator.videoRotationAngleForHorizonLevelCapture)
     }
 
-    /// Clips are landscape-only. Portrait device tilts (90°/270°) must not be
-    /// written into the file transform; keep the last landscape heading instead.
-    private static func landscapeAngle(_ angle: CGFloat, last: CGFloat = 0) -> CGFloat {
-        var a = angle.truncatingRemainder(dividingBy: 360)
-        if a < 0 { a += 360 }
-        if a < 45 || a >= 315 { return 0 }
-        if a >= 135 && a < 225 { return 180 }
-        return last == 180 ? 180 : 0
+    /// A frozen session keeps the angle the writer was given and leaves the
+    /// preview where it was, so the viewfinder shows what the file will hold.
+    @MainActor
+    private func applyRotation(preview: CGFloat, capture: CGFloat) {
+        let frozen = rotation.withLock { state -> Bool in
+            guard !state.isFrozen else { return true }
+            state.angle = CGFloat(CaptureRotation.snapped(Double(capture)))
+            return false
+        }
+        guard !frozen else { return }
+        let snapped = CGFloat(CaptureRotation.snapped(Double(preview)))
+        guard let connection = previewLayer?.connection,
+              connection.isVideoRotationAngleSupported(snapped) else { return }
+        connection.videoRotationAngle = snapped
+    }
+
+    @MainActor
+    private func catchUpRotation() {
+        guard let rotationCoordinator else { return }
+        applyRotation(from: rotationCoordinator)
     }
 
     func setConsumer(_ consumer: (any SampleConsumer)?) {

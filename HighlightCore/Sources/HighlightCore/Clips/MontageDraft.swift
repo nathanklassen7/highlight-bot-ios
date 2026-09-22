@@ -29,6 +29,10 @@ public struct MontageDraft: Equatable, Sendable {
     public static let minimumClipCount = 2
 
     public private(set) var items: [MontageItem]
+    /// Which orientation the finished montage keeps; `nil` until the user has
+    /// been asked. A save-time output choice rather than an edit to their
+    /// clips, so it stays out of `hasChanges` and the discard prompt.
+    public var outputOrientation: ClipOrientation?
     /// Order the draft started with, so `isReordered` can be answered after
     /// the user drags things around and back.
     private let initialOrder: [UUID]
@@ -47,6 +51,15 @@ public struct MontageDraft: Equatable, Sendable {
     /// Seconds the finished montage will run.
     public var totalDuration: Double {
         items.reduce(0) { $0 + $1.outputDuration }
+    }
+
+    /// The orientation to render at: the user's choice, else the one every
+    /// item already shares, else the one with the most output seconds.
+    public var resolvedOrientation: ClipOrientation {
+        if let outputOrientation { return outputOrientation }
+        let present = MontageFraming.orientations(of: items)
+        if present.count == 1, let only = present.first { return only }
+        return MontageFraming.suggestedOrientation(for: items)
     }
 
     public var isReordered: Bool { items.map(\.id) != initialOrder }

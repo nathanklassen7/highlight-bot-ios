@@ -146,7 +146,7 @@ Two screens plus settings. Keep it deliberately minimal so the record screen is 
 - **Library** — grid of clips newest-first with thumbnail, duration, time. Tap plays (`AVPlayer`). Swipe/menu: Share (`ShareLink` → Messages, AirDrop, any app), Save to Photos (`PHPhotoLibrary`, add-only permission), Delete.
 - **Settings** — buffer seconds, resolution/fps, codec (H.264/HEVC), inactivity timeout, storage usage with "delete all", debug metrics toggle.
 
-Orientation: lock to landscape for MVP (sports footage, and it removes an entire class of rotation bugs). Revisit if needed.
+Orientation: portrait and landscape. The Record tab rotates with the phone while idle; orientation locks when recording starts and stays until stop (iOS Camera behaviour). `SegmentedRecorder` sets the writer transform once per session and the ring buffer shares one initialization segment, so a rotation mid-recording cannot be written without discarding the buffer.
 
 ---
 
@@ -202,7 +202,7 @@ These were open questions during planning and are now settled. Treat them as req
 | Decision | Value |
 | --- | --- |
 | Default buffer length *n* | 20 s (matches the Pi); user-selectable 10 / 20 / 30 / 60 s |
-| Orientation | Landscape-only for MVP |
+| Orientation | Portrait or landscape; frozen per recording session |
 | Minimum iOS | 17.2 (required for `AVCaptureEventInteraction`) |
 | Audio | Recorded by default (AAC); mic permission requested at first launch |
 | Clip container | `.mp4`, H.264 video + AAC audio, for maximum cross-platform share compatibility; HEVC available as a setting |

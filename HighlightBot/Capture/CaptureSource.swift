@@ -58,6 +58,13 @@ protocol CaptureSource: AnyObject, Sendable {
     /// data output delivers frames in the sensor's native orientation. Read at
     /// recording start and stamped into the file as metadata (no per-frame work).
     var captureRotationAngle: CGFloat { get }
+    /// Pin `captureRotationAngle` and the preview to their current heading, or
+    /// let both follow the horizon again. This is what keeps a recorded session
+    /// single-orientation: the writer stamps the transform once, so the angle
+    /// must not move until the session ends. Synchronous, and therefore already
+    /// in effect when it returns, because `RecordingPipeline` freezes and then
+    /// reads `captureRotationAngle` for the recorder it is building.
+    func setRotationFrozen(_ frozen: Bool)
     /// The clock sample timestamps are expressed in. Lets the recorder pick a
     /// writer start time before the first frame arrives.
     var captureClock: CMClock { get }

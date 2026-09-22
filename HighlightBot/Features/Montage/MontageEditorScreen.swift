@@ -7,6 +7,10 @@ import SwiftUI
 /// not on disk, so a clip can be reopened and tweaked. The check mark renders
 /// every clip's edit in sequence as one new clip flagged `isMontage`.
 ///
+/// When the clips disagree on orientation the footer offers which one keeps
+/// its full frame; the rest get black bars. That is a setting on the draft
+/// like a trim is, so changing it encodes nothing.
+///
 /// Present with `.fullScreenCover`. `onComplete` fires with the saved record
 /// before dismissal; the store has already been updated.
 struct MontageEditorScreen: View {
@@ -21,6 +25,7 @@ struct MontageEditorScreen: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var exportProgress: MontageExportProgress?
     @State private var showDiscardConfirm = false
+    @State private var showOrientationChoice = false
     @State private var statusMessage: String?
 
     init(clips: [ClipRecord], onComplete: @escaping (ClipRecord) -> Void) {
@@ -57,6 +62,17 @@ struct MontageEditorScreen: View {
             }
         } message: {
             Text("Your clip order and edits are lost. The original clips are not changed.")
+        }
+        .confirmationDialog(
+            "Which orientation should the montage keep?",
+            isPresented: $showOrientationChoice,
+            titleVisibility: .visible
+        ) {
+            ForEach(orientationChoices, id: \.self) { orientation in
+                Button(orientationChoiceTitle(orientation)) {
+                    draft.outputOrientation = orientation
+                }
+            }
         }
         .overlay(alignment: .top) {
             if let statusMessage {
@@ -106,8 +122,7 @@ struct MontageEditorScreen: View {
             Spacer()
 
             Button {
-                guard !isExporting else { return }
-                exportTask = Task { await exportMontage() }
+                startExport()
             } label: {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
@@ -168,6 +183,10 @@ struct MontageEditorScreen: View {
             .font(.caption.weight(.semibold).monospacedDigit())
             .foregroundStyle(.white.opacity(0.85))
 
+            if MontageFraming.needsChoice(draft.items) {
+                framingButton
+            }
+
             Text("Drag the handles to reorder. Tap a clip to trim it or add slow-mo. Saving re-encodes everything into one new clip.")
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.6))
@@ -217,7 +236,58 @@ struct MontageEditorScreen: View {
         return "About \(text) left"
     }
 
+    // MARK: - Orientation
+
+    /// Both orientations in the draft, the one carrying the most footage
+    /// first, which is also what the draft resolves to untouched.
+    private var orientationChoices: [ClipOrientation] {
+        let suggested = MontageFraming.suggestedOrientation(for: draft.items)
+        let rest = MontageFraming.orientations(of: draft.items)
+            .subtracting([suggested])
+            .sorted { $0.rawValue < $1.rawValue }
+        return [suggested] + rest
+    }
+
+    private func orientationChoiceTitle(_ orientation: ClipOrientation) -> String {
+        let count = MontageFraming.letterboxedCount(draft.items, keeping: orientation)
+        guard count > 0 else { return "Keep \(orientation.displayName)" }
+        return "Keep \(orientation.displayName) (\(count) clip\(count == 1 ? " gets" : "s get") black bars)"
+    }
+
+    /// Mixed drafts only. A setting, not a step: it starts on the orientation
+    /// carrying the most footage and changing it encodes nothing. The check
+    /// mark is still the only thing that exports.
+    private var framingButton: some View {
+        Button {
+            showOrientationChoice = true
+        } label: {
+            Text(framingText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.yellow)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.white.opacity(0.08), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Output orientation: \(framingText)")
+        .accessibilityHint("Chooses which orientation keeps its full frame; the rest get black bars")
+    }
+
+    private var framingText: String {
+        let orientation = draft.resolvedOrientation
+        let count = MontageFraming.letterboxedCount(draft.items, keeping: orientation)
+        guard count > 0 else { return "Keep \(orientation.displayName)" }
+        return "Keep \(orientation.displayName) · \(count) clip\(count == 1 ? "" : "s") letterboxed"
+    }
+
     // MARK: - Export
+
+    /// The orientation lives on the draft, so a retry after a failed or
+    /// cancelled export reuses whatever the footer is set to.
+    private func startExport() {
+        guard !isExporting else { return }
+        exportTask = Task { await exportMontage() }
+    }
 
     /// Renders the draft, indexes the result as a new clip stamped now, and
     /// hands it to the presenter. Failures and a user cancel keep the draft
@@ -235,7 +305,11 @@ struct MontageEditorScreen: View {
         let baseName = ClipNaming.baseName(for: now)
         let exporter = MontageExporter(clipsDirectory: AppDirectories.clips)
         do {
-            let exported = try await exporter.export(draft.items, baseName: baseName) { progress in
+            let exported = try await exporter.export(
+                draft.items,
+                baseName: baseName,
+                keeping: draft.resolvedOrientation
+            ) { progress in
                 Task { @MainActor in
                     // Callbacks hop over one by one and can land out of order
                     // or after the export has finished; never move the bar
@@ -253,6 +327,8 @@ struct MontageEditorScreen: View {
                 thumbnailFileName: exported.thumbnailFileName,
                 triggerSource: .ui,
                 sizeBytes: exported.sizeBytes,
+                videoWidth: exported.videoWidth,
+                videoHeight: exported.videoHeight,
                 // Only what every source shares; the user can add more afterwards.
                 tags: ClipStore.commonTags(of: draft.items.map(\.clip.tags)),
                 isStarred: false,
@@ -301,7 +377,7 @@ private struct MontageRow: View {
                 .frame(width: 20)
 
             ThumbnailImage(fileName: item.clip.thumbnailFileName)
-                .frame(width: 96, height: 54)
+                .frame(width: 56, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {

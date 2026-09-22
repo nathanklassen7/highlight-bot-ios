@@ -129,6 +129,8 @@ final class ClipStore {
         clip.thumbnailFileName = exported.thumbnailFileName
         clip.duration = exported.duration
         clip.sizeBytes = exported.sizeBytes
+        clip.videoWidth = exported.videoWidth
+        clip.videoHeight = exported.videoHeight
         try context.save()
         if previous.fileName != clip.fileName {
             removeFiles(for: previous)

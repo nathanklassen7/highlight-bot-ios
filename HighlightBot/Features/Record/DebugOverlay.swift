@@ -33,6 +33,7 @@ struct DebugOverlay: View {
         thermal    \(thermalName(metrics.thermalState))
         free       \(format(freeMB, 0)) MB
         fps        \(metrics.currentFrameRate)
+        rotation   \(metrics.rotationDegrees)°
         session    \(session)
         """
     }

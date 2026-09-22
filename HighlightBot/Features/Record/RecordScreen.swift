@@ -7,6 +7,8 @@ import UIKit
 struct RecordScreen: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var isDimmed = false
     @State private var recordingStartedAt: Date?
@@ -101,37 +103,96 @@ struct RecordScreen: View {
     }
 
     private var controlsOverlay: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    statusIndicator
-                    if !isDimmed && container.settings.config.debugOverlayEnabled {
-                        DebugOverlay(metrics: container.metrics)
+        ZStack {
+            VStack(spacing: 0) {
+                ViewThatFits(in: .horizontal) {
+                    topControlsInline
+                    topControlsStacked
+                }
+
+                Spacer()
+
+                if !isDimmed {
+                    // RecordScreen stays mounted while other tabs show. Wide bottom
+                    // controls need a horizontal fallback or this view's minimum width
+                    // can exceed the window and the RootView ZStack sizes to that max.
+                    ViewThatFits(in: .horizontal) {
+                        bottomControlsWide
+                        bottomControlsCompact
                     }
                 }
-                Spacer()
-                saveStatusBadge
-                if !isDimmed {
-                    lensButton
-                    dimButton
-                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+            .padding(.top, topInset)
 
-            Spacer()
-
+            // Rests on the line a fifth up from the bottom in either
+            // orientation: the one control that has to be hittable without
+            // looking, so it is placed against the viewport rather than
+            // between the padded rows.
             if !isDimmed {
-                // Record is landscape-only, but this view stays mounted (hidden)
-                // while Library/Settings show in portrait. Its minimum width must
-                // stay under a portrait phone or the RootView ZStack grows past the
-                // window and pushes sibling screens off the edges.
-                ViewThatFits(in: .horizontal) {
-                    bottomControlsWide
-                    bottomControlsCompact
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    recordButton
+                    Spacer(minLength: 0)
+                        .containerRelativeFrame(.vertical) { height, _ in height / 5 }
                 }
             }
         }
-        .padding(16)
         .allowsHitTesting(!isDimmed)
+    }
+
+    /// The floating tab pill is centred at the top and only shows when no
+    /// session is live. In landscape there is width enough for the status pill
+    /// beside it; a portrait phone has to go under it.
+    private var topInset: CGFloat {
+        guard !container.sessionState.isRecording,
+              horizontalSizeClass == .compact, verticalSizeClass == .regular else { return 16 }
+        return ScreenMetrics.top
+    }
+
+    private var topControlsInline: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                statusIndicator
+                if showsDebugOverlay {
+                    DebugOverlay(metrics: container.metrics)
+                }
+            }
+            .layoutPriority(0)
+            Spacer(minLength: 0)
+            topTrailingControls
+        }
+    }
+
+    private var topControlsStacked: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                statusIndicator
+                Spacer(minLength: 0)
+                topTrailingControls
+            }
+            if showsDebugOverlay {
+                DebugOverlay(metrics: container.metrics)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var topTrailingControls: some View {
+        HStack(spacing: 12) {
+            saveStatusBadge
+            if !isDimmed {
+                lensButton
+                dimButton
+            }
+        }
+        .layoutPriority(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var showsDebugOverlay: Bool {
+        !isDimmed && container.settings.config.debugOverlayEnabled
     }
 
     private var bottomControlsWide: some View {
@@ -141,11 +202,8 @@ struct RecordScreen: View {
                 clipSecondsPicker
                 activeTagsButton
             }
-            Spacer()
-            recordButton
-            Spacer()
+            Spacer(minLength: 0)
             lastClipButton
-                .frame(width: 112, alignment: .trailing)
         }
     }
 
@@ -155,8 +213,6 @@ struct RecordScreen: View {
             activeTagsButton
             HStack(alignment: .bottom, spacing: 12) {
                 bufferBar
-                Spacer(minLength: 0)
-                recordButton
                 Spacer(minLength: 0)
                 lastClipButton
             }
@@ -343,7 +399,7 @@ struct RecordScreen: View {
                 container.openLastClipInLibrary()
             } label: {
                 ThumbnailImage(fileName: last.thumbnailFileName)
-                    .frame(width: 96, height: 54)
+                    .frame(width: 64, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
                     .overlay(alignment: .bottomTrailing) {
@@ -360,7 +416,7 @@ struct RecordScreen: View {
             .contentShape(Rectangle())
             .accessibilityLabel("Open last clip in Library")
         } else {
-            Color.clear.frame(width: 96, height: 54)
+            Color.clear.frame(width: 64, height: 64)
         }
     }
 
@@ -454,6 +510,7 @@ private struct SaveStatusBadge: View {
                 ProgressView().tint(.white)
             }
             Text(title)
+                .lineLimit(1)
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.white)

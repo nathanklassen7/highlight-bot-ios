@@ -14,7 +14,7 @@ Conventions
   SwiftData, CoreMedia.
 - Tests in `HighlightCore` use **Swift Testing** (`import Testing`), not XCTest.
   XCTest is not available on the dev machine.
-- App target: iOS 17.2 minimum, landscape only.
+- App target: iOS 17.2 minimum. Portrait and landscape are supported; a recording session's orientation is fixed when recording starts and stays until stop.
 
 ---
 
@@ -168,6 +168,13 @@ public enum ClipAssembler {
     public static func plan(segments: [Segment], sessionID: SessionID, lastSeconds: TimeInterval) -> ClipPlan?
 }
 
+public enum ClipOrientation: String, Sendable, Codable, CaseIterable {
+    case landscape, portrait, square, unknown
+    public static func classify(width: Int, height: Int) -> ClipOrientation
+    public var effective: ClipOrientation   // `.unknown` → `.landscape` for layout decisions
+    public var displayName: String
+}
+
 /// Persisted clip metadata (value type). The app's SwiftData model maps to/from this.
 public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
     public let id: UUID
@@ -179,7 +186,10 @@ public struct ClipRecord: Sendable, Codable, Equatable, Identifiable, Hashable {
     public let sizeBytes: Int64
     public let tags: [String]              // user tags, normalized via ClipTag; [] when absent from JSON
     public let isStarred: Bool             // user favourite; false when absent from JSON
-    public init(id:createdAt:duration:fileName:thumbnailFileName:triggerSource:sizeBytes:tags:isStarred:)  // last two default
+    public let videoWidth: Int             // oriented pixel width after capture transform; 0 when absent from JSON
+    public let videoHeight: Int            // oriented pixel height after capture transform; 0 when absent from JSON
+    public var orientation: ClipOrientation  // from `ClipOrientation.classify(width:height:)`
+    public init(id:createdAt:duration:fileName:thumbnailFileName:triggerSource:sizeBytes:tags:isStarred:videoWidth:videoHeight:)  // tags, isStarred, videoWidth, videoHeight default
     /// Copy with different user metadata; capture fields never change.
     public func with(tags: [String]? = nil, isStarred: Bool? = nil) -> ClipRecord
 }
@@ -358,6 +368,9 @@ protocol CaptureSource: AnyObject {
     func stop() async
     /// Lower frame rate (thermal). No-op if unsupported.
     func setFrameRate(_ fps: Int) async
+    /// Pin captureRotationAngle and the preview, or let them follow the horizon again.
+    /// Synchronous: the pipeline freezes, then reads the angle for the writer.
+    func setRotationFrozen(_ frozen: Bool)
 }
 
 final class CaptureEngine: CaptureSource { init() }
@@ -388,6 +401,7 @@ struct PipelineMetrics: Sendable, Equatable {
     var thermalState: ProcessInfo.ThermalState
     var freeBytes: Int64
     var currentFrameRate: Int
+    var rotationDegrees: Int           // angle stamped into the file transform; frozen while recording
     var sessionID: SessionID?
     static let zero: PipelineMetrics
 }
@@ -507,6 +521,8 @@ enum AppDirectories {
     var sizeBytes: Int64
     var tags: [String] = []      // defaults let SwiftData migrate stores that predate the column
     var isStarred: Bool = false
+    var videoWidth: Int = 0      // oriented size; defaults let SwiftData migrate stores that predate the column
+    var videoHeight: Int = 0
     init(record: ClipRecord)
     var record: ClipRecord { get }
     var fileURL: URL             // AppDirectories.clips.appending(path: fileName)
@@ -609,5 +625,6 @@ Settings) — Record tab hides the tab bar while recording.
 Info.plist keys required: `NSCameraUsageDescription`,
 `NSMicrophoneUsageDescription`, `NSPhotoLibraryAddUsageDescription`,
 `UIFileSharingEnabled = YES`, `LSSupportsOpeningDocumentsInPlace = YES`,
-`UISupportedInterfaceOrientations = [LandscapeLeft, LandscapeRight]` (iPhone and iPad),
+`UISupportedInterfaceOrientations = [Portrait, LandscapeLeft, LandscapeRight]` (iPhone),
+`UISupportedInterfaceOrientations~ipad = [Portrait, PortraitUpsideDown, LandscapeLeft, LandscapeRight]`,
 `UIRequiresFullScreen = YES`.

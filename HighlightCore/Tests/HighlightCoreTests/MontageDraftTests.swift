@@ -4,8 +4,15 @@ import Testing
 
 @Suite("MontageDraft")
 struct MontageDraftTests {
-    /// A clip captured `seconds` after the epoch.
-    private func clip(at seconds: TimeInterval, duration: TimeInterval = 10, id: UUID = UUID()) -> ClipRecord {
+    /// A clip captured `seconds` after the epoch, landscape 1080p unless asked
+    /// otherwise.
+    private func clip(
+        at seconds: TimeInterval,
+        duration: TimeInterval = 10,
+        id: UUID = UUID(),
+        width: Int = 1920,
+        height: Int = 1080
+    ) -> ClipRecord {
         ClipRecord(
             id: id,
             createdAt: Date(timeIntervalSince1970: seconds),
@@ -13,8 +20,15 @@ struct MontageDraftTests {
             fileName: "\(Int(seconds)).mp4",
             thumbnailFileName: nil,
             triggerSource: .tap,
-            sizeBytes: 1
+            sizeBytes: 1,
+            videoWidth: width,
+            videoHeight: height
         )
+    }
+
+    /// A clip the montage would have to letterbox against a landscape frame.
+    private func portraitClip(at seconds: TimeInterval, duration: TimeInterval = 10) -> ClipRecord {
+        clip(at: seconds, duration: duration, width: 1080, height: 1920)
     }
 
     @Test("init orders clips oldest first regardless of input order")
@@ -105,5 +119,66 @@ struct MontageDraftTests {
         let record = clip(at: 1, duration: 10)
         #expect(!MontageItem(clip: record).hasChanges)
         #expect(MontageItem(clip: record, edit: ClipEdit(start: 1, end: 10)).hasChanges)
+    }
+
+    // MARK: - Output orientation
+
+    @Test("outputOrientation starts unset")
+    func orientationDefaultsToNil() {
+        let draft = MontageDraft(clips: [clip(at: 1), portraitClip(at: 2)])
+        #expect(draft.outputOrientation == nil)
+    }
+
+    @Test("outputOrientation survives move and update")
+    func orientationSurvivesEdits() {
+        let clips = [clip(at: 1), portraitClip(at: 2), clip(at: 3)]
+        var draft = MontageDraft(clips: clips)
+        draft.outputOrientation = .portrait
+
+        draft.move(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        #expect(draft.outputOrientation == .portrait)
+
+        draft.update(ClipEdit(start: 1, end: 4), for: clips[0].id)
+        #expect(draft.outputOrientation == .portrait)
+        #expect(draft.resolvedOrientation == .portrait)
+    }
+
+    @Test("outputOrientation alone does not make the draft dirty")
+    func orientationIsNotAnEdit() {
+        var draft = MontageDraft(clips: [clip(at: 1), portraitClip(at: 2)])
+        draft.outputOrientation = .portrait
+        #expect(!draft.isReordered)
+        #expect(!draft.hasEdits)
+        #expect(!draft.hasChanges)
+    }
+
+    @Test("resolvedOrientation prefers the explicit choice over the majority")
+    func resolvedPrefersExplicitChoice() {
+        var draft = MontageDraft(clips: [clip(at: 1), clip(at: 2), portraitClip(at: 3)])
+        #expect(draft.resolvedOrientation == .landscape)
+        draft.outputOrientation = .portrait
+        #expect(draft.resolvedOrientation == .portrait)
+    }
+
+    @Test("resolvedOrientation is the shared orientation when every clip agrees")
+    func resolvedUsesSharedOrientation() {
+        let portrait = MontageDraft(clips: [portraitClip(at: 1), portraitClip(at: 2)])
+        #expect(portrait.resolvedOrientation == .portrait)
+
+        // Legacy records carry no size and are landscape by construction.
+        let legacy = MontageDraft(clips: [clip(at: 1, width: 0, height: 0), clip(at: 2)])
+        #expect(legacy.resolvedOrientation == .landscape)
+    }
+
+    @Test("resolvedOrientation falls back to the orientation with the most output seconds")
+    func resolvedFallsBackToSuggestion() {
+        let clips = [clip(at: 1, duration: 4), portraitClip(at: 2, duration: 12)]
+        var draft = MontageDraft(clips: clips)
+        #expect(draft.resolvedOrientation == MontageFraming.suggestedOrientation(for: draft.items))
+        #expect(draft.resolvedOrientation == .portrait)
+
+        // Trimming the portrait clip below the landscape one flips the suggestion.
+        draft.update(ClipEdit(start: 0, end: 2), for: clips[1].id)
+        #expect(draft.resolvedOrientation == .landscape)
     }
 }

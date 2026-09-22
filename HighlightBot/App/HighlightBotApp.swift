@@ -35,7 +35,8 @@ struct HighlightBotApp: App {
     }
 }
 
-/// Lets Library and Settings rotate to portrait while Record stays landscape.
+/// Lets every tab rotate with the phone, except while recording: `RootView`
+/// narrows the mask to the orientation the session started in.
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -48,7 +49,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 @MainActor
 enum InterfaceOrientationLock {
-    static var mask: UIInterfaceOrientationMask = .landscape
+    /// Answers `supportedInterfaceOrientationsFor` before the first `apply`,
+    /// so it has to match the idle rule rather than the recording one.
+    static var mask: UIInterfaceOrientationMask = .allButUpsideDown
 
     static func apply(_ mask: UIInterfaceOrientationMask, forcing forced: UIInterfaceOrientationMask? = nil) {
         self.mask = mask

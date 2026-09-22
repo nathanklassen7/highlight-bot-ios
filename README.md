@@ -47,7 +47,7 @@ cd HighlightCore && swift test
 
 ## Running in the Simulator
 
-The Simulator has no camera, so Simulator builds replay a bundled video through the full pipeline instead. Put a landscape video named `replay.mov` in `HighlightBot/Resources/`, run `xcodegen generate`, and build. Without it the app runs but the preview is empty. See `HighlightBot/Resources/README.md`.
+The Simulator has no camera, so Simulator builds replay a bundled video through the full pipeline instead. Put a video named `replay.mov` in `HighlightBot/Resources/`, run `xcodegen generate`, and build. Either orientation works — the replay source reads the file's own rotation, so a portrait file exercises the portrait capture path. Without it the app runs but the preview is empty. See `HighlightBot/Resources/README.md`.
 
 ## Triggers
 

@@ -102,8 +102,8 @@ final class ClipTrimmer: Sendable {
             try await ClipExporter.runExport(asset: asset, preset: preset, timeRange: range, to: outputURL)
         }
 
-        // Read timing and the thumbnail from the finished file so the record
-        // matches what was actually written.
+        // Read timing, size, and the thumbnail from the finished file so the
+        // record matches what was actually written.
         let output = AVURLAsset(url: outputURL)
         let duration = await Self.duration(of: output) ?? expectedDuration
         let thumbnailURL = await ClipExporter.writeThumbnail(
@@ -113,10 +113,18 @@ final class ClipTrimmer: Sendable {
             clipsDirectory: clipsDirectory
         )
         let sizeBytes = ClipExporter.fileSize(at: outputURL)
+        let size = await ClipExporter.orientedSize(of: output)
 
         let seconds = (clock.now - started).timeInterval
         Log.export.info("Trim \(baseName, privacy: .public) took \(seconds, format: .fixed(precision: 3))s")
-        return ExportedClip(fileURL: outputURL, thumbnailURL: thumbnailURL, duration: duration, sizeBytes: sizeBytes)
+        return ExportedClip(
+            fileURL: outputURL,
+            thumbnailURL: thumbnailURL,
+            duration: duration,
+            sizeBytes: sizeBytes,
+            videoWidth: size.width,
+            videoHeight: size.height
+        )
     }
 
     /// Removes the files a trim produced. For callers that could not record

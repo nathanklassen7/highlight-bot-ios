@@ -107,6 +107,8 @@ struct ClipAssemblerTests {
             thumbnailFileName: "clip.jpg",
             triggerSource: .hardwareButton,
             sizeBytes: 12_345,
+            videoWidth: 1080,
+            videoHeight: 1920,
             tags: ["Hockey", "Playoffs"],
             isStarred: true,
             isMontage: true
@@ -119,9 +121,12 @@ struct ClipAssemblerTests {
         #expect(decoded.tags == ["Hockey", "Playoffs"])
         #expect(decoded.isStarred)
         #expect(decoded.isMontage)
+        #expect(decoded.videoWidth == 1080)
+        #expect(decoded.videoHeight == 1920)
+        #expect(decoded.orientation == .portrait)
     }
 
-    @Test("ClipRecord decodes legacy JSON without tags, isStarred, or isMontage")
+    @Test("ClipRecord decodes legacy JSON without tags, isStarred, isMontage, or a size")
     func clipRecordLegacyDecode() throws {
         let json = """
         {"id":"6BA7B810-9DAD-11D1-80B4-00C04FD430C8","createdAt":0,"duration":20,"fileName":"clip.mp4","triggerSource":"tap","sizeBytes":1}
@@ -131,6 +136,9 @@ struct ClipAssemblerTests {
         #expect(decoded.isStarred == false)
         #expect(decoded.isMontage == false)
         #expect(decoded.thumbnailFileName == nil)
+        #expect(decoded.videoWidth == 0)
+        #expect(decoded.videoHeight == 0)
+        #expect(decoded.orientation == .unknown)
     }
 
     @Test("ClipRecord.with replaces only user metadata")
@@ -142,10 +150,14 @@ struct ClipAssemblerTests {
             fileName: "a.mp4",
             thumbnailFileName: nil,
             triggerSource: .tap,
-            sizeBytes: 1
+            sizeBytes: 1,
+            videoWidth: 1920,
+            videoHeight: 1080
         )
         let tagged = record.with(tags: ["Golf"])
         #expect(tagged.tags == ["Golf"])
+        #expect(tagged.videoWidth == 1920)
+        #expect(tagged.videoHeight == 1080)
         #expect(tagged.isStarred == false)
         #expect(tagged.isMontage == false)
         #expect(tagged.id == record.id)
