@@ -39,6 +39,10 @@ struct ThumbnailImage: View {
                 }
             }
             .clipped()
+            // Clipping is only visual: the oversized `.fill` image stays
+            // hit-testable outside the frame, so a grid cell would answer taps
+            // aimed at its neighbour without this.
+            .contentShape(Rectangle())
             .task(id: fileName) {
                 if let cached = Self.cached(fileName) {
                     loaded = (fileName, cached)
