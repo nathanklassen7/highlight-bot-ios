@@ -78,7 +78,7 @@ targets:
         # auto-registered it), so the ID is namespaced under the developer instead.
         PRODUCT_BUNDLE_IDENTIFIER: com.nathanklassen.highlightbot
         MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: "3"
+        CURRENT_PROJECT_VERSION: "4"
         INFOPLIST_FILE: HighlightBot/Info.plist
         SUPPORTS_MACCATALYST: false
         ENABLE_PREVIEWS: true
