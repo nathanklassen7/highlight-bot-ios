@@ -32,7 +32,7 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     public var minimumFreeBytes: Int64
     /// Whether the debug metrics overlay is shown.
     public var debugOverlayEnabled: Bool
-    /// Which back camera to capture from.
+    /// Which camera to capture from.
     public var lens: CameraLens
     /// Whether saying "clip it" while recording saves a clip. Needs the
     /// microphone even when `recordAudio` is off.
@@ -103,12 +103,39 @@ public struct RecordingConfig: Codable, Sendable, Equatable {
     /// Buffer lengths offered in the UI picker, in seconds.
     public static let bufferOptions: [TimeInterval] = [10, 20, 30, 60]
 
-    /// Frame rates offered in the UI picker. 120 fps is 720p-only; the
-    /// settings screen drops resolution when this rate is selected.
-    public static let frameRateOptions: [Int] = [30, 60, 120]
+    /// Frame rates offered in the UI picker before limits apply. Which of
+    /// them a given lens and resolution can run is `CaptureConstraints`' call.
+    public static var frameRateOptions: [Int] { CaptureConstraints.frameRateOptions }
 
-    /// Highest frame rate offered at 1080p. 120 fps is captured at 720p.
-    public static let maxFrameRateFor1080p = 60
+    /// The size preset for `width` × `height`. Setting it writes both.
+    public var resolution: CaptureResolution {
+        get { CaptureResolution(width: width, height: height) }
+        set {
+            width = newValue.width
+            height = newValue.height
+        }
+    }
+
+    /// Frame rate the capture session should run: `frameRate`, lowered to
+    /// what the lens and resolution allow. Never rewrites `frameRate`.
+    public var captureFrameRate: Int {
+        min(frameRate, CaptureConstraints.maxFrameRate(lens: lens, resolution: resolution))
+    }
+
+    /// Frame rates the picker should offer for the current lens and resolution.
+    public var availableFrameRates: [Int] {
+        CaptureConstraints.availableFrameRates(lens: lens, resolution: resolution)
+    }
+
+    /// Resolutions the picker should offer for the current lens.
+    public var availableResolutions: [CaptureResolution] {
+        CaptureConstraints.availableResolutions(lens: lens)
+    }
+
+    /// A copy the camera can run. See `CaptureConstraints.resolve`.
+    public func resolved(keeping field: CaptureSetupField? = nil) -> RecordingConfig {
+        CaptureConstraints.resolve(self, keeping: field)
+    }
 
     /// Number of media segments needed to cover `bufferSeconds`, rounded up.
     /// Returns 0 when `segmentInterval` is invalid.

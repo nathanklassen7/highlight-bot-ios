@@ -13,31 +13,6 @@ struct SettingsScreen: View {
 
     private static let inactivityMinutes: [Int] = [15, 30, 45, 60, 120]
 
-    /// Preset capture resolutions exposed in the picker.
-    private enum Resolution: String, CaseIterable, Identifiable {
-        case p1080, p720
-
-        var id: String { rawValue }
-
-        var displayName: String {
-            switch self {
-            case .p1080: "1080p"
-            case .p720: "720p"
-            }
-        }
-
-        var size: (width: Int, height: Int) {
-            switch self {
-            case .p1080: (1920, 1080)
-            case .p720: (1280, 720)
-            }
-        }
-
-        init(width: Int, height: Int) {
-            self = (width >= 1920 || height >= 1080) ? .p1080 : .p720
-        }
-    }
-
     var body: some View {
         @Bindable var settings = container.settings
         let isRecording = container.sessionState.isRecording
@@ -67,14 +42,15 @@ struct SettingsScreen: View {
                             Text(lens.displayName).tag(lens)
                         }
                     }
-                    // Width is the selection; height follows in onChange below.
-                    Picker("Resolution", selection: $settings.config.width) {
-                        ForEach(Resolution.allCases) { resolution in
-                            Text(resolution.displayName).tag(resolution.size.width)
+                    // Menus list only what the lens and size can run.
+                    // `SettingsStore` resolves the other fields after a change.
+                    Picker("Resolution", selection: $settings.config.resolution) {
+                        ForEach(settings.config.availableResolutions) { resolution in
+                            Text(resolution.displayName).tag(resolution)
                         }
                     }
                     Picker("Frame rate", selection: $settings.config.frameRate) {
-                        ForEach(RecordingConfig.frameRateOptions, id: \.self) { fps in
+                        ForEach(settings.config.availableFrameRates, id: \.self) { fps in
                             Text("\(fps) fps").tag(fps)
                         }
                     }
@@ -89,10 +65,8 @@ struct SettingsScreen: View {
                 } footer: {
                     if isRecording {
                         Text("Capture settings apply the next time recording starts.")
-                    } else if settings.config.lens == .ultraWide {
-                        Text("Ultra Wide tops out at 60 fps on most iPhones; higher rates fall back to the fastest it supports. 120 fps captures at 720p. H.264 shares everywhere; HEVC makes smaller files.")
                     } else {
-                        Text("120 fps captures at 720p. H.264 shares everywhere; HEVC makes smaller files.")
+                        Text(captureFooter(for: settings.config.lens))
                     }
                 }
 
@@ -182,24 +156,20 @@ struct SettingsScreen: View {
                     _ = await container.permissions.requestSpeech()
                 }
             }
-            .onChange(of: settings.config.frameRate) { _, fps in
-                if fps > RecordingConfig.maxFrameRateFor1080p {
-                    let size = Resolution.p720.size
-                    settings.config.width = size.width
-                    settings.config.height = size.height
-                }
-            }
-            .onChange(of: settings.config.width) { _, width in
-                let resolution = Resolution(width: width, height: settings.config.height)
-                let size = resolution.size
-                if settings.config.height != size.height {
-                    settings.config.height = size.height
-                }
-                if resolution == .p1080, settings.config.frameRate > RecordingConfig.maxFrameRateFor1080p {
-                    settings.config.frameRate = RecordingConfig.maxFrameRateFor1080p
-                }
-            }
         }
+    }
+
+    // MARK: - Capture
+
+    /// The limits that touch this lens, then the codec note. Ultra Wide adds a
+    /// hardware caveat the rules table cannot know without probing the device.
+    private func captureFooter(for lens: CameraLens) -> String {
+        var parts = CaptureConstraints.limits(affecting: lens).map(\.reason)
+        if lens == .ultraWide {
+            parts.append("Ultra Wide tops out at 60 fps on most iPhones; higher rates fall back to the fastest it supports.")
+        }
+        parts.append("H.264 shares everywhere; HEVC makes smaller files.")
+        return parts.joined(separator: " ")
     }
 
     // MARK: - Voice

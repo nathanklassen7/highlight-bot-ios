@@ -23,7 +23,7 @@ struct RecordingConfigTests {
         #expect(config.saveFlashEnabled == true)
         #expect(RecordingConfig.bufferOptions == [10, 20, 30, 60])
         #expect(RecordingConfig.frameRateOptions == [30, 60, 120])
-        #expect(RecordingConfig.maxFrameRateFor1080p == 60)
+        #expect(config.resolution == .p1080)
         #expect(RecordingConfig() == config)
     }
 
@@ -137,13 +137,59 @@ struct RecordingConfigTests {
         #expect(!RecordingConfig(recordAudio: false, voiceTriggerEnabled: false).needsMicrophone)
     }
 
-    @Test("camera lens labels and toggle")
+    @Test("camera lens labels and cycle")
     func lensLabels() {
-        #expect(CameraLens.wide.toggled == .ultraWide)
-        #expect(CameraLens.ultraWide.toggled == .wide)
+        #expect(CameraLens.wide.next == .ultraWide)
+        #expect(CameraLens.ultraWide.next == .selfie)
+        #expect(CameraLens.selfie.next == .wide)
         #expect(CameraLens.wide.shortLabel == "1×")
         #expect(CameraLens.ultraWide.shortLabel == "0.5×")
-        #expect(CameraLens.allCases.map(\.id) == ["wide", "ultraWide"])
+        #expect(CameraLens.selfie.displayName == "Selfie")
+        #expect(CameraLens.wide.buttonSymbol == nil)
+        #expect(CameraLens.ultraWide.buttonSymbol == nil)
+        #expect(CameraLens.selfie.buttonSymbol == "person.crop.square")
+        #expect(CameraLens.allCases.map(\.id) == ["wide", "ultraWide", "selfie"])
+    }
+
+    @Test("decodes the removed selfie 0.5× lens as selfie")
+    func decodesRetiredSelfieZoom() throws {
+        var object = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(RecordingConfig.default)
+        ) as! [String: Any]
+        object["lens"] = "selfieUltraWide"
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
+        #expect(decoded.lens == .selfie)
+    }
+
+    @Test("resolution preset reads and writes width and height")
+    func resolutionPreset() {
+        var config = RecordingConfig.default
+        #expect(config.resolution == .p1080)
+
+        config.resolution = .p720
+        #expect(config.width == 1280)
+        #expect(config.height == 720)
+
+        // Width is what the picker writes; a stale height must not win.
+        config.height = 1080
+        #expect(config.resolution == .p720)
+        #expect(CaptureResolution(width: 1920, height: 720) == .p1080)
+        #expect(CaptureResolution(width: 3840, height: 2160) == .p1080)
+        #expect(CaptureResolution(width: 640, height: 480) == .p720)
+    }
+
+    @Test("capture frame rate follows the constraints without rewriting the setting")
+    func captureFrameRate() {
+        let hd120 = RecordingConfig(width: 1920, height: 1080, frameRate: 120)
+        #expect(hd120.frameRate == 120)
+        #expect(hd120.captureFrameRate == 60)
+        #expect(hd120.availableFrameRates == [30, 60])
+
+        let p720 = RecordingConfig(width: 1280, height: 720, frameRate: 120)
+        #expect(p720.captureFrameRate == 120)
+        #expect(p720.availableFrameRates == [30, 60, 120])
+        #expect(p720.availableResolutions == CaptureResolution.allCases)
     }
 
     @Test("codec display names")

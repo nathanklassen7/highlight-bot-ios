@@ -18,7 +18,7 @@ enum CaptureError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noCamera: return "No back camera is available."
+        case .noCamera: return "No camera is available."
         case .noSuitableFormat: return "The camera has no usable video format."
         case .cannotAddInput(let what): return "Cannot add \(what) input to the capture session."
         case .cannotAddOutput(let what): return "Cannot add \(what) output to the capture session."
@@ -160,8 +160,14 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         }
         guard !frozen else { return }
         let snapped = CGFloat(CaptureRotation.snapped(Double(preview)))
-        guard let connection = previewLayer?.connection,
-              connection.isVideoRotationAngleSupported(snapped) else { return }
+        guard let connection = previewLayer?.connection else { return }
+        // Front preview is a mirror; the recorded buffers are not (see configure).
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            let device = rotationCoordinator?.device
+            connection.isVideoMirrored = device?.position == .front
+        }
+        guard connection.isVideoRotationAngleSupported(snapped) else { return }
         connection.videoRotationAngle = snapped
     }
 
@@ -296,7 +302,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         // colour would push the session toward 10-bit 'x420' formats we don't want.
         session.automaticallyConfiguresCaptureDeviceForWideColor = false
 
-        guard let device = Self.backCamera(for: config.lens) else {
+        guard let device = Self.camera(for: config.lens) else {
             throw CaptureError.noCamera
         }
         let input = try AVCaptureDeviceInput(device: device)
@@ -317,6 +323,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         let frameDuration = CMTime(value: 1, timescale: CMTimeScale(choice.frameRate))
         device.activeVideoMinFrameDuration = frameDuration
         device.activeVideoMaxFrameDuration = frameDuration
+        Self.applyZoom(on: device)
         device.unlockForConfiguration()
         currentFrameRate = choice.frameRate
 
@@ -332,11 +339,18 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         videoOutput = video
 
         if let connection = video.connection(with: .video) {
-            // 0° is the back camera's native orientation (landscape, home indicator on
-            // the right), so no per-frame rotation happens. Orientation for the file is
-            // applied as writer metadata from `captureRotationAngle` instead.
+            // 0° is the sensor's native orientation, so no per-frame rotation happens.
+            // Orientation for the file is applied as writer metadata from
+            // `captureRotationAngle` instead. Buffers stay unmirrored: that angle
+            // assumes an unmirrored sensor image, and mirroring them would fight it.
+            // The preview connection is mirrored separately so the viewfinder still
+            // behaves like a mirror.
             if connection.isVideoRotationAngleSupported(0) {
                 connection.videoRotationAngle = 0
+            }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
             }
         }
 
@@ -447,20 +461,28 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
 
     // MARK: - Device & format selection
 
-    /// The back camera for `lens`. Falls back to the wide camera when the
-    /// device has no ultra-wide (older / SE models) so capture still works.
-    private static func backCamera(for lens: CameraLens) -> AVCaptureDevice? {
-        let wide = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    /// The camera for `lens`. Ultra-wide falls back to wide when the device
+    /// has no dedicated lens.
+    private static func camera(for lens: CameraLens) -> AVCaptureDevice? {
         switch lens {
         case .wide:
-            return wide
+            return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
         case .ultraWide:
             if let ultra = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
                 return ultra
             }
             Log.capture.notice("Ultra-wide camera unavailable; using wide")
-            return wide
+            return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        case .selfie:
+            return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
         }
+    }
+
+    /// Each lens is its own camera at the default field of view. Setting the
+    /// zoom explicitly keeps a previous format's crop from sticking.
+    private static func applyZoom(on device: AVCaptureDevice) {
+        let zoom = min(device.maxAvailableVideoZoomFactor, max(device.minAvailableVideoZoomFactor, 1))
+        device.videoZoomFactor = zoom
     }
 
     private struct FormatChoice {
@@ -482,6 +504,9 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     private static func chooseFormat(for device: AVCaptureDevice, config: RecordingConfig) -> FormatChoice? {
         let wanted = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         let wantedArea = config.width * config.height
+        // 1080p and the selfie camera cannot honour 120 fps. Score against the
+        // capped rate so a stored 120 does not pick a format they will not run.
+        let requestedFPS = config.captureFrameRate
 
         var best: FormatChoice?
         var bestScore = Int.min
@@ -498,7 +523,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
 
             let dimsMatch = width == config.width && height == config.height
             let pixelMatch = subtype == wanted
-            let fpsOK = formatSupports(format, fps: config.frameRate)
+            let fpsOK = formatSupports(format, fps: requestedFPS)
 
             var score = 0
             if dimsMatch {
@@ -512,21 +537,21 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             // 120/240 formats are often locked to that rate; thermal drops to 30
             // in place, so a range that still includes 30 is worth more than
             // staying unbinned on a locked slo-mo format.
-            if formatSupports(format, fps: min(30, config.frameRate)) { score += 2_000 }
+            if formatSupports(format, fps: min(30, requestedFPS)) { score += 2_000 }
             if !format.isVideoBinned { score += 1_000 }
             // Prefer the lowest max fps that still covers the request.
             score -= min(maxFPS, 999)
 
             if score > bestScore {
                 bestScore = score
-                let chosenFPS = fpsOK ? config.frameRate : min(config.frameRate, maxFPS)
+                let chosenFPS = fpsOK ? requestedFPS : min(requestedFPS, maxFPS)
                 best = FormatChoice(
                     format: format,
                     width: width,
                     height: height,
                     frameRate: max(1, chosenFPS),
                     pixelFormat: subtype,
-                    isExact: dimsMatch && pixelMatch && fpsOK
+                    isExact: dimsMatch && pixelMatch && fpsOK && requestedFPS == config.frameRate
                 )
             }
         }

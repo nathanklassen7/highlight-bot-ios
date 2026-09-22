@@ -12,8 +12,19 @@ final class SettingsStore {
 
     /// Current configuration. Every mutation (including nested field edits via
     /// bindings) is persisted and forwarded to `onChange`.
+    ///
+    /// Capture rules are enforced here, not in the screens: whichever field
+    /// the caller changed wins and the others give way (see
+    /// `CaptureConstraints.resolve`). A resolved write re-enters `didSet`
+    /// once; resolving is idempotent, so that pass persists and stops.
     var config: RecordingConfig {
         didSet {
+            let changed = CaptureConstraints.changedField(from: oldValue, to: config)
+            let resolved = config.resolved(keeping: changed)
+            if resolved != config {
+                config = resolved
+                return
+            }
             guard config != oldValue else { return }
             persist()
             onChange?(config)
@@ -49,7 +60,7 @@ final class SettingsStore {
         do {
             let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
             // Ignore persisted configs that no longer validate (e.g. after a schema change).
-            return decoded.validate().isEmpty ? decoded : nil
+            return decoded.validate().isEmpty ? decoded.resolved() : nil
         } catch {
             Log.ui.error("Failed to decode persisted recording config; using defaults: \(String(describing: error))")
             return nil

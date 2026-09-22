@@ -119,6 +119,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         self.frameTap = frameTap
         self.audioListener = audioListener
         self.coordinator = coordinator
+        let config = config.resolved()
         self.state = OSAllocatedUnfairLock(initialState: State(config: config, currentFrameRate: config.frameRate))
     }
 
@@ -135,6 +136,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     /// Stores the config, updates the ring policy now, and applies everything
     /// else (format, bitrate, segment interval) on the next `startRecording`.
     func updateConfig(_ config: RecordingConfig) async {
+        let config = config.resolved()
         let (recording, previewing) = state.withLock { s in
             s.config = config
             if !s.isRecording { s.currentFrameRate = config.frameRate }

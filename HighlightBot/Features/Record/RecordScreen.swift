@@ -267,28 +267,37 @@ struct RecordScreen: View {
         .background(.black.opacity(0.55), in: Capsule())
     }
 
-    /// Toggles wide / ultra-wide. Lens changes reconfigure the camera, so it
-    /// is locked while a session is live; the setting applies on the next start.
+    /// Cycles wide, ultra-wide, and selfie. Lens changes reconfigure the camera,
+    /// so the button is locked while a session is live; the setting applies on
+    /// the next start. Selfie is an icon; the back cameras show their zoom.
     private var lensButton: some View {
         let lens = container.settings.config.lens
         let locked = container.sessionState != .idle
         return Button {
-            container.settings.config.lens = lens.toggled
+            container.settings.config.lens = lens.next
         } label: {
-            Text(lens.shortLabel)
-                .font(.footnote.weight(.bold))
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .frame(minWidth: 40)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 4)
-                .background(.black.opacity(0.55), in: Capsule())
+            Group {
+                if let symbol = lens.buttonSymbol {
+                    Image(systemName: symbol)
+                        .font(.body.weight(.semibold))
+                        .accessibilityHidden(true)
+                } else {
+                    Text(lens.shortLabel)
+                        .font(.footnote.weight(.bold))
+                        .monospacedDigit()
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(minWidth: 40)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 4)
+            .background(.black.opacity(0.55), in: Capsule())
         }
         .buttonStyle(.plain)
         .disabled(locked)
         .opacity(locked ? 0.5 : 1)
         .accessibilityLabel("Lens: \(lens.displayName)")
-        .accessibilityHint(locked ? "Stop recording to change lens" : "Switches to \(lens.toggled.displayName)")
+        .accessibilityHint(locked ? "Stop recording to change lens" : "Switches to \(lens.next.displayName)")
     }
 
     /// Turns the "clip it" trigger on and off without a trip to Settings.
