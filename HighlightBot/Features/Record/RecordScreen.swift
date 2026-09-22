@@ -183,6 +183,7 @@ struct RecordScreen: View {
         HStack(spacing: 12) {
             saveStatusBadge
             if !isDimmed {
+                voiceButton
                 lensButton
                 dimButton
             }
@@ -288,6 +289,42 @@ struct RecordScreen: View {
         .opacity(locked ? 0.5 : 1)
         .accessibilityLabel("Lens: \(lens.displayName)")
         .accessibilityHint(locked ? "Stop recording to change lens" : "Switches to \(lens.toggled.displayName)")
+    }
+
+    /// Turns the "clip it" trigger on and off without a trip to Settings.
+    /// Unlike the lens, this is safe mid-session: the recogniser reads the
+    /// microphone buffers the capture session is already delivering. With
+    /// audio recording off the microphone only opens on the next start, which
+    /// is the one case where the switch does nothing until then.
+    private var voiceButton: some View {
+        let listening = container.settings.config.voiceTriggerEnabled
+        // VERIFY: "person.wave.2" and its .fill variant ship in SF Symbols 5 /
+        // iOS 17; a missing name renders empty rather than crashing.
+        return Button {
+            toggleVoiceTrigger()
+        } label: {
+            Image(systemName: listening ? "person.wave.2.fill" : "person.wave.2")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(listening ? Color.white : Color.white.opacity(0.45))
+                .padding(10)
+                .background(.black.opacity(0.55), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Voice trigger")
+        .accessibilityValue(listening ? "On" : "Off")
+        .accessibilityHint(listening ? "Stops listening for “clip it”" : "Saves a clip when you say “clip it”")
+    }
+
+    /// Permission is requested on the way on, the same as the Settings toggle;
+    /// `AppContainer` reports anything still missing through `errorMessage`.
+    private func toggleVoiceTrigger() {
+        let enabling = !container.settings.config.voiceTriggerEnabled
+        container.settings.config.voiceTriggerEnabled = enabling
+        guard enabling else { return }
+        Task {
+            _ = await container.permissions.requestMicrophone()
+            _ = await container.permissions.requestSpeech()
+        }
     }
 
     private var dimButton: some View {
