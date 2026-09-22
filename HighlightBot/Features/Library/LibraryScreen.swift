@@ -44,7 +44,7 @@ struct LibraryScreen: View {
                     ContentUnavailableView(
                         "No clips yet",
                         systemImage: "film.stack",
-                        description: Text("Start recording on the Record tab and tap the screen to save the last few seconds.")
+                        description: Text("Start recording and tap the screen to save the last few seconds.")
                     )
                     .padding(.top, ScreenMetrics.top)
                 } else {
@@ -178,10 +178,6 @@ struct LibraryScreen: View {
             }
             .onChange(of: starredOnly) { _, _ in pruneSelectionToVisible() }
             .onChange(of: selectedTagFilters) { _, _ in pruneSelectionToVisible() }
-            .onAppear { consumePendingLibraryClip() }
-            .onChange(of: container.pendingLibraryClip) { _, _ in
-                consumePendingLibraryClip()
-            }
             .onGeometryChange(for: Bool.self) { proxy in
                 proxy.size.width > proxy.size.height
             } action: { isLandscape = $0 }
@@ -197,9 +193,9 @@ struct LibraryScreen: View {
         }
     }
 
-    /// Sideways swipes in the player walk the grid as the user sees it. A clip
-    /// opened from the Record tab may be hidden by the active filters; then
-    /// the player walks every clip instead of having nowhere to go.
+    /// Sideways swipes in the player walk the grid as the user sees it. Should
+    /// the clip ever fall outside the active filters, the player walks every
+    /// clip instead of having nowhere to go.
     private func playerNavigationOrder(for record: ClipRecord) -> [UUID] {
         let visible = filteredClips.map(\.id)
         return visible.contains(record.id) ? visible : clips.map(\.id)
@@ -540,16 +536,6 @@ struct LibraryScreen: View {
     private func exitSelection() {
         isSelecting = false
         selectedIDs.removeAll()
-    }
-
-    private func consumePendingLibraryClip() {
-        guard let clip = container.pendingLibraryClip else { return }
-        container.pendingLibraryClip = nil
-        if isSelecting {
-            exitSelection()
-        }
-        // `lastClip` is a snapshot; tags/star may have changed since it was taken.
-        playerRecord = container.clipStore.clip(withID: clip.id)?.record ?? clip
     }
 
     private func deletePending() {

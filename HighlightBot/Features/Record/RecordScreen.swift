@@ -2,8 +2,16 @@ import HighlightCore
 import SwiftUI
 import UIKit
 
-/// Live preview. The whole screen is the trigger target: tap saves a clip
-/// (or starts recording when idle), long-press toggles recording.
+/// Live preview. While recording the whole screen is the trigger target: tap
+/// saves a clip, long-press stops. Idle, only the shutter (or a long-press)
+/// starts a session, so a stray tap cannot begin recording.
+///
+/// The chrome follows the iPhone Camera app so the controls land where a
+/// Camera user already expects them: small toggles in a strip along the top,
+/// the lens picker as zoom pills above the shutter, the clip length where the
+/// mode strip sits, and a bottom bar of last-clip thumbnail, shutter, and
+/// flip-camera. `RootView`'s tab pill sits in the middle of the top strip
+/// while idle; the thumbnail is a second way into the Library.
 struct RecordScreen: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.scenePhase) private var scenePhase
@@ -13,6 +21,8 @@ struct RecordScreen: View {
     @State private var isDimmed = false
     @State private var recordingStartedAt: Date?
     @State private var showTagPicker = false
+    /// Back lens the flip button returns to from selfie.
+    @State private var lastBackLens: CameraLens = .wide
 
     var body: some View {
         ZStack {
@@ -42,6 +52,11 @@ struct RecordScreen: View {
                 if newState != .starting {
                     isDimmed = false
                 }
+            }
+        }
+        .onChange(of: container.settings.config.lens, initial: true) { _, lens in
+            if !lens.isSelfie {
+                lastBackLens = lens
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -102,132 +117,138 @@ struct RecordScreen: View {
         .onLongPressGesture(minimumDuration: 0.6) { handleLongPress() }
     }
 
+    /// Phones held sideways get the Camera app's landscape arrangement: the
+    /// shutter column on the trailing edge with the lens and clip-length
+    /// pickers beside it. Everything else uses the portrait stack.
+    private var isLandscapePhone: Bool {
+        verticalSizeClass == .compact
+    }
+
     private var controlsOverlay: some View {
         ZStack {
-            VStack(spacing: 0) {
-                ViewThatFits(in: .horizontal) {
-                    topControlsInline
-                    topControlsStacked
-                }
-
-                Spacer()
-
-                if !isDimmed {
-                    // RecordScreen stays mounted while other tabs show. Wide bottom
-                    // controls need a horizontal fallback or this view's minimum width
-                    // can exceed the window and the RootView ZStack sizes to that max.
-                    ViewThatFits(in: .horizontal) {
-                        bottomControlsWide
-                        bottomControlsCompact
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-            .padding(.top, topInset)
-
-            // Rests on the line a fifth up from the bottom in either
-            // orientation: the one control that has to be hittable without
-            // looking, so it is placed against the viewport rather than
-            // between the padded rows.
             if !isDimmed {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    recordButton
-                    Spacer(minLength: 0)
-                        .containerRelativeFrame(.vertical) { height, _ in height / 5 }
-                }
+                scrims
+            }
+            if isLandscapePhone {
+                landscapeControls
+            } else {
+                portraitControls
             }
         }
         .allowsHitTesting(!isDimmed)
     }
 
-    /// The floating tab pill is centred at the top and only shows when no
-    /// session is live. In landscape there is width enough for the status pill
-    /// beside it; a portrait phone has to go under it.
-    private var topInset: CGFloat {
-        guard !container.sessionState.isRecording,
-              horizontalSizeClass == .compact, verticalSizeClass == .regular else { return 16 }
-        return ScreenMetrics.top
-    }
-
-    private var topControlsInline: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                statusIndicator
-                if showsDebugOverlay {
-                    DebugOverlay(metrics: container.metrics)
-                }
-            }
-            .layoutPriority(0)
-            Spacer(minLength: 0)
-            topTrailingControls
+    /// Soft darkening behind the top strip and bottom bar so white chrome
+    /// stays legible over a bright viewfinder. Camera letterboxes instead;
+    /// the preview here is full-bleed, so a gradient does the same job.
+    private var scrims: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: 120)
+            Spacer()
+            LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
+                .frame(height: isLandscapePhone ? 0 : 260)
         }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 
-    private var topControlsStacked: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                statusIndicator
-                Spacer(minLength: 0)
-                topTrailingControls
-            }
+    private var portraitControls: some View {
+        VStack(spacing: 0) {
+            topStrip
             if showsDebugOverlay {
                 DebugOverlay(metrics: container.metrics)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
             }
-        }
-    }
 
-    @ViewBuilder
-    private var topTrailingControls: some View {
-        HStack(spacing: 12) {
-            saveStatusBadge
+            Spacer()
+
             if !isDimmed {
-                voiceButton
-                lensButton
+                lensPills
+                    .padding(.bottom, 18)
+                clipLengthStrip
+                    .padding(.bottom, 22)
+                bottomBar
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
+
+    private var landscapeControls: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                topStrip
+                if showsDebugOverlay {
+                    DebugOverlay(metrics: container.metrics)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 8)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            if !isDimmed {
+                HStack(alignment: .center, spacing: 20) {
+                    Spacer()
+                    lensPills(axis: .vertical)
+                    clipLengthStrip(axis: .vertical)
+                    shutterColumn
+                }
+                .padding(.trailing, 16)
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    // MARK: - Top strip
+
+    /// Camera's top row: toggles at the edges, the live status in the middle.
+    /// Save outcome and buffer fill hang under the status so the eye only has
+    /// one place to look while recording.
+    private var topStrip: some View {
+        // Top-aligned so the edge buttons hold still while the status block
+        // grows downward (buffer bar, save badge).
+        ZStack(alignment: .top) {
+            HStack(spacing: 10) {
+                if !isDimmed {
+                    voiceButton
+                }
                 dimButton
-            }
-        }
-        .layoutPriority(1)
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var showsDebugOverlay: Bool {
-        !isDimmed && container.settings.config.debugOverlayEnabled
-    }
-
-    private var bottomControlsWide: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                bufferBar
-                clipSecondsPicker
-                activeTagsButton
-            }
-            Spacer(minLength: 0)
-            lastClipButton
-        }
-    }
-
-    private var bottomControlsCompact: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            clipSecondsPicker
-            activeTagsButton
-            HStack(alignment: .bottom, spacing: 12) {
-                bufferBar
                 Spacer(minLength: 0)
-                lastClipButton
+                if !isDimmed {
+                    activeTagsButton
+                }
+            }
+            // In landscape the shutter column owns the trailing edge; the
+            // status block stays centred on the screen regardless.
+            .padding(.trailing, isLandscapePhone ? Self.landscapeShutterColumnWidth : 0)
+
+            VStack(spacing: 8) {
+                statusIndicator
+                bufferIndicator
+                saveStatusBadge
             }
         }
     }
 
-    // MARK: - Overlay pieces
-
+    /// Nothing while idle: the shutter is the only start control.
     @ViewBuilder
     private var statusIndicator: some View {
+        if container.sessionState != .idle {
+            statusPill
+        }
+    }
+
+    @ViewBuilder
+    private var statusPill: some View {
         Group {
             switch container.sessionState {
             case .idle:
-                Label("Tap to start", systemImage: "hand.tap")
+                EmptyView()
             case .starting:
                 HStack(spacing: 6) {
                     ProgressView().tint(.white)
@@ -238,10 +259,8 @@ struct RecordScreen: View {
                     HStack(spacing: 8) {
                         Circle()
                             .fill(.red)
-                            .frame(width: 12, height: 12)
+                            .frame(width: 10, height: 10)
                             .opacity(recDotLit(at: context.date) ? 1 : 0)
-                        Text("REC")
-                            .fontWeight(.bold)
                         Text(elapsedText(at: context.date))
                             .monospacedDigit()
                         if container.isVoiceListening {
@@ -263,41 +282,28 @@ struct RecordScreen: View {
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.black.opacity(0.55), in: Capsule())
+        .padding(.vertical, 7)
+        .background(container.sessionState.isRecording ? Color.red.opacity(0.85) : .black.opacity(0.55), in: Capsule())
     }
 
-    /// Cycles wide, ultra-wide, and selfie. Lens changes reconfigure the camera,
-    /// so the button is locked while a session is live; the setting applies on
-    /// the next start. Selfie is an icon; the back cameras show their zoom.
-    private var lensButton: some View {
-        let lens = container.settings.config.lens
-        let locked = container.sessionState != .idle
-        return Button {
-            container.settings.config.lens = lens.next
-        } label: {
-            Group {
-                if let symbol = lens.buttonSymbol {
-                    Image(systemName: symbol)
-                        .font(.body.weight(.semibold))
-                        .accessibilityHidden(true)
-                } else {
-                    Text(lens.shortLabel)
-                        .font(.footnote.weight(.bold))
-                        .monospacedDigit()
-                }
+    /// How much of the clip length is already in the ring. Matters most in the
+    /// first seconds of a session, when a tap would save a short clip.
+    @ViewBuilder
+    private var bufferIndicator: some View {
+        if container.sessionState.isRecording, !isDimmed {
+            let total = max(container.settings.config.bufferSeconds, 1)
+            let buffered = min(container.metrics.bufferedSeconds, total)
+            VStack(spacing: 3) {
+                ProgressView(value: buffered, total: total)
+                    .tint(buffered >= total ? .white : .red)
+                    .frame(width: 96)
+                Text(buffered >= total ? "\(Int(total))s ready" : "\(Int(buffered.rounded(.down)))s / \(Int(total))s")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .monospacedDigit()
+                    .shadow(color: .black.opacity(0.6), radius: 2)
             }
-            .foregroundStyle(.white)
-            .frame(minWidth: 40)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 4)
-            .background(.black.opacity(0.55), in: Capsule())
         }
-        .buttonStyle(.plain)
-        .disabled(locked)
-        .opacity(locked ? 0.5 : 1)
-        .accessibilityLabel("Lens: \(lens.displayName)")
-        .accessibilityHint(locked ? "Stop recording to change lens" : "Switches to \(lens.next.displayName)")
     }
 
     /// Turns the "clip it" trigger on and off without a trip to Settings.
@@ -312,11 +318,7 @@ struct RecordScreen: View {
         return Button {
             toggleVoiceTrigger()
         } label: {
-            Image(systemName: listening ? "person.wave.2.fill" : "person.wave.2")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(listening ? Color.white : Color.white.opacity(0.45))
-                .padding(10)
-                .background(.black.opacity(0.55), in: Circle())
+            StripIcon(systemImage: listening ? "person.wave.2.fill" : "person.wave.2", tint: listening ? .yellow : .white.opacity(0.7))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Voice trigger")
@@ -336,37 +338,18 @@ struct RecordScreen: View {
         }
     }
 
+    /// Outlined at rest, yellow and filled while the screen is dimmed. The
+    /// dimmed overlay swallows taps for saving, so waking is by long-press.
     private var dimButton: some View {
         Button {
             isDimmed = true
         } label: {
-            Image(systemName: "moon.fill")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(10)
-                .background(.black.opacity(0.55), in: Circle())
+            StripIcon(systemImage: isDimmed ? "moon.fill" : "moon", tint: isDimmed ? .yellow : .white.opacity(0.7))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Dim screen")
-    }
-
-    @ViewBuilder
-    private var bufferBar: some View {
-        if container.sessionState.isRecording {
-            let total = max(container.settings.config.bufferSeconds, 1)
-            let buffered = min(container.metrics.bufferedSeconds, total)
-            VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: buffered, total: total)
-                    .tint(.red)
-                    .frame(maxWidth: 200)
-                Text("\(Int(buffered.rounded(.down)))s / \(Int(total))s buffered")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: 200)
-        }
+        .accessibilityValue(isDimmed ? "On" : "Off")
+        .accessibilityHint(isDimmed ? "Hold anywhere to wake" : "")
     }
 
     private var activeTagsButton: some View {
@@ -379,58 +362,190 @@ struct RecordScreen: View {
                 if activeTags.isEmpty {
                     Text("Tags")
                 } else {
-                    TagPillRow(tags: activeTags, limit: 2, size: .compact)
+                    TagPillRow(tags: activeTags, limit: 1, size: .compact)
                 }
             }
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.white.opacity(0.2), in: Capsule())
+            .padding(.vertical, 8)
+            .background(.black.opacity(0.55), in: Capsule())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: 220, alignment: .leading)
+        // Leaves room for the icon-only tab pill between this and the toggles.
+        .frame(maxWidth: 110, alignment: .trailing)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel("Recording tags")
         .accessibilityValue(activeTags.isEmpty ? "None" : activeTags.joined(separator: ", "))
     }
 
-    private var clipSecondsPicker: some View {
-        let bufferSeconds = container.settings.config.bufferSeconds
-        return HStack(spacing: 6) {
-            ForEach(RecordingConfig.bufferOptions, id: \.self) { seconds in
-                let enabled = seconds <= bufferSeconds
-                let selected = seconds == container.selectedClipSeconds
-                Button {
-                    container.setClipSeconds(seconds)
-                } label: {
-                    Text("\(Int(seconds))s")
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(selected ? Color.white : Color.white.opacity(0.2), in: Capsule())
-                        .foregroundStyle(selected ? .black : .white)
-                }
-                .buttonStyle(.plain)
-                .disabled(!enabled)
-                .opacity(enabled ? 1 : 0.35)
-                .accessibilityLabel("Clip length \(Int(seconds)) seconds")
+    private var showsDebugOverlay: Bool {
+        !isDimmed && container.settings.config.debugOverlayEnabled
+    }
+
+    // MARK: - Lens pills
+
+    private enum ControlAxis {
+        case horizontal, vertical
+    }
+
+    private var lensPills: some View {
+        lensPills(axis: .horizontal)
+    }
+
+    /// Camera's zoom cluster: one round pill per back lens, the active one
+    /// larger and yellow. Selfie lives on the flip button, so while the front
+    /// camera is up no pill is lit and tapping one comes back to that lens.
+    /// Lens changes reconfigure the camera, so the pills lock while a session
+    /// is live.
+    private func lensPills(axis: ControlAxis) -> some View {
+        let current = container.settings.config.lens
+        let locked = lensLocked
+        let pills = ForEach(Self.backLenses) { lens in
+            let selected = lens == current
+            Button {
+                container.settings.config.lens = lens
+            } label: {
+                Text(Self.pillLabel(for: lens, selected: selected))
+                    .font(.system(size: selected ? 13 : 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(selected ? Color.yellow : Color.white)
+                    .frame(width: selected ? 38 : 30, height: selected ? 38 : 30)
+                    .background(.black.opacity(0.55), in: Circle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Lens: \(lens.displayName)")
+            .accessibilityAddTraits(selected ? .isSelected : [])
+        }
+        return Group {
+            switch axis {
+            case .horizontal: HStack(spacing: 8) { pills }
+            case .vertical: VStack(spacing: 8) { pills }
+            }
+        }
+        .padding(4)
+        .background(.black.opacity(0.25), in: Capsule())
+        .disabled(locked)
+        .opacity(locked ? 0.5 : 1)
+        .animation(.easeInOut(duration: 0.15), value: current)
+        .accessibilityHint(locked ? "Stop recording to change lens" : "")
+    }
+
+    private var lensLocked: Bool {
+        container.sessionState != .idle
+    }
+
+    /// Widest first, as Camera orders its zoom pills.
+    private static let backLenses = CameraLens.allCases
+        .filter { !$0.isSelfie }
+        .sorted { zoomFactor($0) < zoomFactor($1) }
+
+    private static func zoomFactor(_ lens: CameraLens) -> Double {
+        Double(lens.shortLabel.filter { $0.isNumber || $0 == "." }) ?? .infinity
+    }
+
+    /// ".5" and "1" at rest, "0.5×" and "1×" when chosen, as Camera does.
+    private static func pillLabel(for lens: CameraLens, selected: Bool) -> String {
+        if selected { return lens.shortLabel }
+        var label = lens.shortLabel
+        if label.hasSuffix("×") { label.removeLast() }
+        if label.hasPrefix("0.") { label.removeFirst() }
+        return label
+    }
+
+    // MARK: - Clip length strip
+
+    private var clipLengthStrip: some View {
+        clipLengthStrip(axis: .horizontal)
+    }
+
+    /// Sits where Camera's PHOTO / VIDEO mode strip does: plain text, the
+    /// selected length in yellow. Lengths beyond the buffer are dimmed.
+    private func clipLengthStrip(axis: ControlAxis) -> some View {
+        let bufferSeconds = container.settings.config.bufferSeconds
+        let items = ForEach(RecordingConfig.bufferOptions, id: \.self) { seconds in
+            let enabled = seconds <= bufferSeconds
+            let selected = seconds == container.selectedClipSeconds
+            Button {
+                container.setClipSeconds(seconds)
+            } label: {
+                Text("\(Int(seconds))s")
+                    .font(.footnote.weight(.semibold))
+                    .tracking(0.6)
+                    .monospacedDigit()
+                    .foregroundStyle(selected ? Color.yellow : Color.white)
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.35)
+            .accessibilityLabel("Clip length \(Int(seconds)) seconds")
+            .accessibilityAddTraits(selected ? .isSelected : [])
+        }
+        return Group {
+            switch axis {
+            case .horizontal: HStack(spacing: 14) { items }
+            case .vertical: VStack(spacing: 10) { items }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Clip length")
+    }
+
+    // MARK: - Bottom bar
+
+    /// Camera's bottom row: last shot on the left, shutter in the middle,
+    /// flip camera on the right.
+    private var bottomBar: some View {
+        ZStack {
+            HStack {
+                libraryThumbnail
+                Spacer()
+                flipButton
+            }
+            recordButton
         }
     }
 
+    /// Shutter ring width plus the gap to the next column; what the top
+    /// strip's trailing controls step inward by in landscape.
+    private static let landscapeShutterColumnWidth: CGFloat = 72 + 20
+
+    private var shutterColumn: some View {
+        VStack {
+            flipButton
+            Spacer()
+            recordButton
+            Spacer()
+            libraryThumbnail
+        }
+    }
+
+    /// Video-mode shutter: white ring, red disc to start, red square to stop.
     private var recordButton: some View {
         let state = container.sessionState
         let busy = state == .starting || state == .stopping
         return Button {
             container.toggleRecording()
         } label: {
-            Image(systemName: state.isRecording ? "stop.fill" : "record.circle")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(state.isRecording ? .white : .red)
-                .frame(width: 56, height: 56)
-                .background(.black.opacity(0.55), in: Circle())
-                .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 2))
+            ZStack {
+                Circle()
+                    .strokeBorder(.white, lineWidth: 4)
+                    .frame(width: 72, height: 72)
+                if state.isRecording {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.red)
+                        .frame(width: 30, height: 30)
+                } else {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 58, height: 58)
+                }
+            }
+            .animation(.easeInOut(duration: 0.15), value: state.isRecording)
         }
         .buttonStyle(.plain)
         .disabled(busy)
@@ -438,42 +553,67 @@ struct RecordScreen: View {
         .accessibilityLabel(state.isRecording ? "Stop recording" : "Start recording")
     }
 
-    @ViewBuilder
-    private var lastClipButton: some View {
-        if let last = container.lastClip {
-            Button {
-                container.openLastClipInLibrary()
-            } label: {
-                ThumbnailImage(fileName: last.thumbnailFileName)
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
-                    .overlay(alignment: .bottomTrailing) {
-                        Text(durationText(last.duration))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 3))
-                            .padding(4)
-                    }
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityLabel("Open last clip in Library")
-        } else {
-            Color.clear.frame(width: 64, height: 64)
+    /// Selfie is a camera flip, not a zoom step. Coming back lands on the
+    /// back lens that was up before.
+    private var flipButton: some View {
+        let selfie = container.settings.config.lens.isSelfie
+        let locked = lensLocked
+        return Button {
+            container.settings.config.lens = selfie ? lastBackLens : .selfie
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath.camera")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(selfie ? Color.yellow : Color.white)
+                .frame(width: 48, height: 48)
+                .background(.black.opacity(0.55), in: Circle())
         }
+        .buttonStyle(.plain)
+        .disabled(locked)
+        .opacity(locked ? 0.5 : 1)
+        .accessibilityLabel(selfie ? "Switch to back camera" : "Switch to front camera")
+        .accessibilityHint(locked ? "Stop recording to change lens" : "")
+    }
+
+    /// The way into the Library grid. Shows the last clip when there is one
+    /// and a blank slot otherwise, so the door is always in the same place.
+    private var libraryThumbnail: some View {
+        Button {
+            container.openLibrary()
+        } label: {
+            Group {
+                if let last = container.lastClip {
+                    ThumbnailImage(fileName: last.thumbnailFileName)
+                        .overlay(alignment: .bottomTrailing) {
+                            Text(durationText(last.duration))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 3))
+                                .padding(3)
+                        }
+                } else {
+                    Image(systemName: "photo.stack")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(0.55))
+                }
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Open Library")
     }
 
     // MARK: - Gestures
 
     private func handleTap() {
-        if container.sessionState.isRecording {
-            container.tapTrigger.fireSave()
-        } else if container.sessionState == .idle {
-            container.toggleRecording()
-        }
+        guard container.sessionState.isRecording else { return }
+        container.tapTrigger.fireSave()
     }
 
     private func handleLongPress() {
@@ -544,6 +684,20 @@ struct RecordScreen: View {
 
 // MARK: - Subviews
 
+/// Round toggle for the top strip.
+private struct StripIcon: View {
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 36, height: 36)
+            .background(.black.opacity(0.55), in: Circle())
+    }
+}
+
 /// Status pill for in-flight saves and their outcome.
 private struct SaveStatusBadge: View {
     let title: String
@@ -582,25 +736,24 @@ private struct ErrorBanner: View {
     }
 }
 
-/// Opaque black overlay for long sessions. Taps still save or start; long-press wakes.
+/// Opaque black overlay for long sessions. Taps still save while recording; long-press wakes.
 private struct DimmedModeView: View {
     let isRecording: Bool
 
     var body: some View {
-        let tapHint = isRecording ? "Tap to save" : "Tap to start"
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 4) {
                 Text("Screen dimmed")
-                Text("\(tapHint) · Hold to wake")
+                Text(isRecording ? "Tap to save · Hold to wake" : "Hold to wake")
             }
             .font(.caption2)
-            .foregroundStyle(.white.opacity(0.25))
+            .foregroundStyle(.white.opacity(0.45))
         }
         .accessibilityLabel(
             isRecording
                 ? "Screen dimmed. Tap to save a clip, hold to wake."
-                : "Screen dimmed. Tap to start, hold to wake."
+                : "Screen dimmed. Hold to wake."
         )
     }
 }

@@ -90,8 +90,11 @@ final class AppContainer {
     var metrics: PipelineMetrics = .zero
     /// Most recently saved clip (restored from the store on launch).
     var lastClip: ClipRecord?
-    /// Clip the Library tab should open after leaving Record.
-    var pendingLibraryClip: ClipRecord?
+    /// Screen on show. Recording forces `.record`.
+    var selectedTab: AppTab = .record
+    /// Set when the Library was asked for mid-session; `RootView` switches
+    /// to it once recording has stopped.
+    var libraryRequested = false
     /// Transient, user-facing error text. Views clear it after showing it.
     var errorMessage: String?
     /// Outcome shown in the Record save pill after in-flight saves drain.
@@ -238,17 +241,16 @@ final class AppContainer {
         emit(TriggerEvent(source: .ui, kind: .toggleRecording))
     }
 
-    /// Stop a live session if needed, then ask the Library tab to play `lastClip`.
-    func openLastClipInLibrary() {
-        guard let lastClip else { return }
+    /// Show the Library, stopping a live session first if there is one.
+    func openLibrary() {
         switch sessionState {
         case .starting, .stopping:
             return
         case .recording, .interrupted:
-            pendingLibraryClip = lastClip
+            libraryRequested = true
             toggleRecording()
         case .idle:
-            pendingLibraryClip = lastClip
+            selectedTab = .library
         }
     }
 

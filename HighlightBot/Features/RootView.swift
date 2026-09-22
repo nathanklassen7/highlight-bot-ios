@@ -1,33 +1,35 @@
 import SwiftUI
 import UIKit
 
-/// Top-level tabs. The tab bar sits at the top so hiding it while recording
-/// does not move the record button at the bottom of the viewfinder.
-struct RootView: View {
-    @Environment(AppContainer.self) private var container
-    @State private var selectedTab: Tab = .record
+/// Top-level screens, switched by a floating pill centred at the top. The
+/// pill sits at the top so hiding it during a session does not move the
+/// shutter at the bottom of the viewfinder. `RecordScreen` stays mounted
+/// underneath the other tabs so the viewfinder never has to restart.
+enum AppTab: String, CaseIterable, Hashable {
+    case record, library, settings
 
-    enum Tab: String, CaseIterable, Hashable {
-        case record, library, settings
-
-        var title: String {
-            switch self {
-            case .record: "Record"
-            case .library: "Library"
-            case .settings: "Settings"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .record: "record.circle"
-            case .library: "square.grid.2x2"
-            case .settings: "gearshape"
-            }
+    var title: String {
+        switch self {
+        case .record: "Record"
+        case .library: "Library"
+        case .settings: "Settings"
         }
     }
 
+    var systemImage: String {
+        switch self {
+        case .record: "record.circle"
+        case .library: "square.grid.2x2"
+        case .settings: "gearshape"
+        }
+    }
+}
+
+struct RootView: View {
+    @Environment(AppContainer.self) private var container
+
     var body: some View {
+        let selectedTab = container.selectedTab
         ZStack {
             RecordScreen()
                 .opacity(selectedTab == .record ? 1 : 0)
@@ -42,67 +44,67 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
-            if !container.sessionState.isRecording {
+            if showsTabBar {
                 topTabBar
                     .padding(.top, 8)
             }
         }
         .statusBarHidden(selectedTab == .record)
         .onAppear { applyOrientation(recording: container.sessionState.isRecording) }
-        .onChange(of: selectedTab) { _, _ in
+        .onChange(of: container.selectedTab) { _, _ in
             applyOrientation(recording: container.sessionState.isRecording)
         }
         .onChange(of: container.sessionState.isRecording) { _, isRecording in
             if isRecording {
-                selectedTab = .record
-            } else {
-                showLibraryIfRequested()
+                container.selectedTab = .record
+            } else if container.libraryRequested {
+                // Asked for mid-session; safe to show now that capture is down.
+                container.libraryRequested = false
+                container.selectedTab = .library
             }
             applyOrientation(recording: isRecording)
         }
-        .onChange(of: container.pendingLibraryClip) { _, _ in
-            showLibraryIfRequested()
-        }
     }
 
-    private var usesCameraChrome: Bool { selectedTab == .record }
+    private var usesCameraChrome: Bool { container.selectedTab == .record }
 
+    /// The pill shares the top strip's centre with the session status on the
+    /// Record screen, so it only shows there while nothing is live.
+    private var showsTabBar: Bool {
+        !usesCameraChrome || container.sessionState == .idle
+    }
+
+    /// Icons alone on the Record screen, where the top strip is already busy;
+    /// icons and names elsewhere. One row whose titles come and go, rather
+    /// than two rows swapped, so the pill animates between the two widths.
     private var topTabBar: some View {
-        HStack(spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                tabRow(iconOnly: false)
-                tabRow(iconOnly: true)
+        let iconOnly = usesCameraChrome
+        return HStack(spacing: 6) {
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                tabButton(tab, iconOnly: iconOnly)
             }
         }
         .padding(4)
         .background(.regularMaterial, in: Capsule())
         .overlay {
             Capsule()
-                .strokeBorder(.white.opacity(usesCameraChrome ? 0.28 : 0.12), lineWidth: 0.5)
+                .strokeBorder(.white.opacity(iconOnly ? 0.28 : 0.12), lineWidth: 0.5)
         }
         .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+        .animation(.snappy(duration: 0.3), value: iconOnly)
     }
 
-    private func tabRow(iconOnly: Bool) -> some View {
-        HStack(spacing: 6) {
-            ForEach(Tab.allCases, id: \.self) { tab in
-                tabButton(tab, iconOnly: iconOnly)
-            }
-        }
-    }
-
-    private func tabButton(_ tab: Tab, iconOnly: Bool) -> some View {
-        let selected = selectedTab == tab
+    private func tabButton(_ tab: AppTab, iconOnly: Bool) -> some View {
+        let selected = container.selectedTab == tab
         return Button {
-            selectedTab = tab
+            container.selectedTab = tab
         } label: {
-            Group {
-                if iconOnly {
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .labelStyle(.iconOnly)
-                } else {
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .labelStyle(.titleAndIcon)
+            HStack(spacing: 6) {
+                Image(systemName: tab.systemImage)
+                if !iconOnly {
+                    Text(tab.title)
+                        .fixedSize()
+                        .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
                 }
             }
             .font(.subheadline.weight(.semibold))
@@ -128,14 +130,6 @@ struct RootView: View {
             return selected ? .black : .white
         }
         return selected ? Color(uiColor: .systemBackground) : .primary
-    }
-
-    /// Library is created only when selected; wait until capture is not live so
-    /// the recording-tab lock does not yank us back to Record.
-    private func showLibraryIfRequested() {
-        guard container.pendingLibraryClip != nil else { return }
-        guard !container.sessionState.isRecording else { return }
-        selectedTab = .library
     }
 
     /// Recording pins the interface to wherever the phone already is. The
