@@ -22,6 +22,8 @@ struct PipelineMetrics: Sendable, Equatable {
     var lastExportSeconds: Double
     /// Duration of the last video data callback, microseconds. Budget: <1000.
     var lastCallbackMicros: Double
+    /// Process CPU over the last metrics interval, percent of one core.
+    var cpuPercent: Double
     var thermalState: ProcessInfo.ThermalState
     var freeBytes: Int64
     var currentFrameRate: Int
@@ -40,6 +42,7 @@ struct PipelineMetrics: Sendable, Equatable {
         lastSegmentWriteMillis: 0,
         lastExportSeconds: 0,
         lastCallbackMicros: 0,
+        cpuPercent: 0,
         thermalState: .nominal,
         freeBytes: 0,
         currentFrameRate: 0,
@@ -91,6 +94,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     private let coordinator: SessionCoordinator
     private let thermal = ThermalMonitor()
     private let powerMode = PowerModeMonitor()
+    private let cpu = CPUUsageSampler()
     private let recorderQueue = DispatchQueue(label: "com.highlightbot.recorder", qos: .utility)
 
     private struct State: Sendable {
@@ -449,6 +453,9 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     }
 
     private func startSessionTasks() {
+        // Start the CPU interval at the session boundary so the first reading
+        // covers recording only, not however long the viewfinder sat idle.
+        cpu.reset()
         let metricsTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -527,13 +534,14 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             lastSegmentWriteMillis: ringMillis,
             lastExportSeconds: exporter.lastExportSeconds,
             lastCallbackMicros: counters?.lastCallbackMicros ?? 0,
+            cpuPercent: cpu.sample(),
             thermalState: ProcessInfo.processInfo.thermalState,
             freeBytes: StorageMonitor.freeBytes(at: AppDirectories.ring),
             currentFrameRate: frameRate,
             rotationDegrees: Int(source.captureRotationAngle.rounded()),
             sessionID: recorder?.currentSessionID
         )
-        Log.session.debug("metrics frames=\(metrics.capturedFrames) dropped=\(metrics.droppedFrames) analyzerDropped=\(metrics.analyzerDroppedFrames) buffered=\(metrics.bufferedSeconds, format: .fixed(precision: 1))s cbMicros=\(metrics.lastCallbackMicros, format: .fixed(precision: 0)) cbMaxMicros=\(counters?.maxCallbackMicros ?? 0, format: .fixed(precision: 0)) writeMs=\(metrics.lastSegmentWriteMillis, format: .fixed(precision: 1)) skippedVideo=\(metrics.skippedVideoAppends) skippedAudio=\(metrics.skippedAudioAppends) fps=\(metrics.currentFrameRate) rotation=\(metrics.rotationDegrees) thermal=\(metrics.thermalState.rawValue)")
+        Log.session.debug("metrics frames=\(metrics.capturedFrames) dropped=\(metrics.droppedFrames) analyzerDropped=\(metrics.analyzerDroppedFrames) buffered=\(metrics.bufferedSeconds, format: .fixed(precision: 1))s cbMicros=\(metrics.lastCallbackMicros, format: .fixed(precision: 0)) cbMaxMicros=\(counters?.maxCallbackMicros ?? 0, format: .fixed(precision: 0)) writeMs=\(metrics.lastSegmentWriteMillis, format: .fixed(precision: 1)) cpu=\(metrics.cpuPercent, format: .fixed(precision: 0))% skippedVideo=\(metrics.skippedVideoAppends) skippedAudio=\(metrics.skippedAudioAppends) fps=\(metrics.currentFrameRate) rotation=\(metrics.rotationDegrees) thermal=\(metrics.thermalState.rawValue)")
         return metrics
     }
 

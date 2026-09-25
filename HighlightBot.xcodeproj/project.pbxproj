@@ -16,6 +16,7 @@
 		241834767E3EC217DB544259 /* SampleFanout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0842989F61DD17F77B974EBE /* SampleFanout.swift */; };
 		24FF09967DC44A550BAB64A6 /* FileReplayCaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A2143011647568553306C /* FileReplayCaptureSource.swift */; };
 		2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61BEEBD4CB3D63EDBA7BA8FC /* CaptureEngine.swift */; };
+		2E9E40C7CC363C78E3CEED9C /* CPUUsageSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E588E111BA494E50081E17 /* CPUUsageSampler.swift */; };
 		36F112ED5C6E5502FC875759 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */; };
 		37A8EA54D504D71233B6C17B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = E1B7DB62E3F12BFF3CAE8189 /* PrivacyInfo.xcprivacy */; };
 		3AEF9345FB2E9635F1B25D30 /* HighlightBotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */; };
@@ -115,6 +116,7 @@
 		EC79DA3C37CF382A4FBEE979 /* SpeedMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeedMenu.swift; sourceTree = "<group>"; };
 		F1FD1D006BBF78A043B2C560 /* RecordingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingPipeline.swift; sourceTree = "<group>"; };
 		F25C4C547C9BB323F00F7AC3 /* HighlightBotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightBotApp.swift; sourceTree = "<group>"; };
+		F2E588E111BA494E50081E17 /* CPUUsageSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUUsageSampler.swift; sourceTree = "<group>"; };
 		FFA4B93551BC8E234E8A1254 /* ClipEditorScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipEditorScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -148,6 +150,7 @@
 			isa = PBXGroup;
 			children = (
 				5B70E71D459FA79466779634 /* AppDirectories.swift */,
+				F2E588E111BA494E50081E17 /* CPUUsageSampler.swift */,
 				6D3C44C696CAAD0D675271F2 /* Log.swift */,
 				AEA49A4BA94CF37EF4806662 /* PermissionsManager.swift */,
 				DB14BDF939CC747BC6B68662 /* PowerModeMonitor.swift */,
@@ -390,6 +393,7 @@
 			files = (
 				A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */,
 				89B8CD7D19DBD999797D39F0 /* AppDirectories.swift in Sources */,
+				2E9E40C7CC363C78E3CEED9C /* CPUUsageSampler.swift in Sources */,
 				2B2FF60477662B09FEC245C6 /* CaptureEngine.swift in Sources */,
 				8C4EF4BFFFA49853ADCD43F7 /* CaptureSource.swift in Sources */,
 				B311E8E0C6FC779AE20EB552 /* Clip.swift in Sources */,

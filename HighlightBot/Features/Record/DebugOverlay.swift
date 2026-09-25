@@ -30,6 +30,7 @@ struct DebugOverlay: View {
         seg write  \(format(metrics.lastSegmentWriteMillis, 1)) ms
         export     \(format(metrics.lastExportSeconds, 2)) s
         callback   \(format(metrics.lastCallbackMicros, 0)) µs
+        cpu        \(format(metrics.cpuPercent, 0)) %
         thermal    \(thermalName(metrics.thermalState))
         free       \(format(freeMB, 0)) MB
         fps        \(metrics.currentFrameRate)
