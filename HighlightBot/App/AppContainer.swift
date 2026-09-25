@@ -110,6 +110,13 @@ final class AppContainer {
     /// every state change.
     @ObservationIgnored private var voiceProblemReported = false
 
+    /// Brightness the user had before dimming; restored on wake. Nil while
+    /// the screen is not dimmed.
+    @ObservationIgnored private var brightnessBeforeDim: CGFloat?
+    /// Low enough to save power on any panel, high enough that the dimmed
+    /// overlay's hint text is still legible and the phone does not look dead.
+    static let dimmedBrightness: CGFloat = 0.1
+
     @ObservationIgnored private let backendProxy: BackendProxy
     @ObservationIgnored private var started = false
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
@@ -228,6 +235,28 @@ final class AppContainer {
         } catch {
             Log.ui.error("Preview failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Stop the camera. Called when the Record screen is no longer showing;
+    /// a live viewfinder behind another tab is pure battery cost.
+    func stopPreview() async {
+        await pipeline.stopPreview()
+    }
+
+    /// Dimmed mode for long sessions: the preview stream stops at the source
+    /// and the backlight drops. Waking restores both. Recording and triggers
+    /// are unaffected.
+    func setScreenDimmed(_ dimmed: Bool) {
+        pipeline.source.setPreviewEnabled(!dimmed)
+        if dimmed {
+            if brightnessBeforeDim == nil {
+                brightnessBeforeDim = ScreenBrightness.current
+            }
+            ScreenBrightness.set(Self.dimmedBrightness)
+        } else if let previous = brightnessBeforeDim {
+            brightnessBeforeDim = nil
+            ScreenBrightness.set(previous)
         }
     }
 

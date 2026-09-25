@@ -44,6 +44,7 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     /// Captured on the main actor in `makePreviewLayer()`; safe to use off-main,
     /// unlike the owning `CALayer`.
     private var displayRenderer: AVSampleBufferVideoRenderer?
+    private var previewEnabled = true
     private var config: RecordingConfig = .default
     private var stopRequested = false
     private var thread: Thread?
@@ -165,6 +166,16 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
 
     /// Replay cannot change the file's frame rate.
     func setFrameRate(_ fps: Int) async {}
+
+    /// Off, frames still reach the consumer but skip the display layer.
+    @MainActor
+    func setPreviewEnabled(_ enabled: Bool) {
+        let renderer: AVSampleBufferVideoRenderer? = lock.withLock {
+            previewEnabled = enabled
+            return displayRenderer
+        }
+        if !enabled { renderer?.flush() }
+    }
 
     /// No torch on a replayed file.
     func setTorch(_ on: Bool) async {}
@@ -318,7 +329,7 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     private func deliver(_ sample: CMSampleBuffer, isVideo: Bool) {
         lock.lock()
         let consumer = self.consumer
-        let renderer = self.displayRenderer
+        let renderer = previewEnabled ? self.displayRenderer : nil
         lock.unlock()
 
         if isVideo {

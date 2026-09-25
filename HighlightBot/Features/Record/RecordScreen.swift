@@ -62,13 +62,25 @@ struct RecordScreen: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 container.permissions.refresh()
+            } else if isDimmed {
+                // A lowered brightness outlives the app; put it back before
+                // the user sees the Home screen at 10%.
+                isDimmed = false
             }
         }
-        // Keep the viewfinder live whenever we may use the camera: on appear,
-        // after permissions are granted, and after returning to the foreground.
+        .onChange(of: isDimmed) { _, dimmed in
+            container.setScreenDimmed(dimmed)
+        }
+        // Keep the viewfinder live while this screen is the one showing: on
+        // appear, after permissions are granted, and after returning to the
+        // foreground. Behind another tab the camera is stopped outright.
         .task(id: previewKey) {
             guard permissionsSatisfied, scenePhase != .background else { return }
-            await container.startPreview()
+            if container.selectedTab == .record {
+                await container.startPreview()
+            } else {
+                await container.stopPreview()
+            }
         }
         .task(id: container.errorMessage) {
             guard container.errorMessage != nil else { return }
@@ -644,9 +656,9 @@ struct RecordScreen: View {
         }
     }
 
-    /// Changes whenever a preview (re)start might be needed.
+    /// Changes whenever a preview start or stop might be needed.
     private var previewKey: String {
-        "\(permissionsSatisfied)-\(scenePhase == .background)"
+        "\(permissionsSatisfied)-\(scenePhase == .background)-\(container.selectedTab == .record)"
     }
 
     private var permissionsSatisfied: Bool {

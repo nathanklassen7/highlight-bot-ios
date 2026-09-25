@@ -49,8 +49,14 @@ protocol CaptureSource: AnyObject, Sendable {
     func configure(_ config: RecordingConfig) async throws
     func start() async throws
     func stop() async
-    /// Lower or restore the frame rate (thermal). No-op if unsupported.
+    /// Lower or restore the frame rate (idle viewfinder, thermal, Low Power
+    /// Mode). No-op if unsupported.
     func setFrameRate(_ fps: Int) async
+    /// Stop or resume feeding the preview layer. Off, the source does no work
+    /// for the viewfinder at all (the camera's preview connection is disabled,
+    /// not merely covered), which is what dimmed mode is for. Recording is
+    /// unaffected.
+    @MainActor func setPreviewEnabled(_ enabled: Bool)
     /// Turn the camera torch on or off. No-op when the device has no torch or
     /// no camera has been configured yet.
     func setTorch(_ on: Bool) async

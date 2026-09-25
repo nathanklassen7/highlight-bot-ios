@@ -32,6 +32,7 @@
 		82E2683314B0DC9F5D5EF08F /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83EA040C70A9C59465323ED2 /* DebugOverlay.swift */; };
 		837DBDA0012AFE44A835D856 /* HighlightCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2A65D7B92D2754F701A86B4E /* HighlightCore */; };
 		859215D15F8EB6371FDE1638 /* PreviewLayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B69648746A8204553FB069B8 /* PreviewLayerView.swift */; };
+		877C026C464CEFDA9DD179A6 /* PowerModeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14BDF939CC747BC6B68662 /* PowerModeMonitor.swift */; };
 		891768BDB82A73DF5E40329C /* StorageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12DC35A01A9ECFD0E0CE63E9 /* StorageMonitor.swift */; };
 		89B8CD7D19DBD999797D39F0 /* AppDirectories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B70E71D459FA79466779634 /* AppDirectories.swift */; };
 		8C4EF4BFFFA49853ADCD43F7 /* CaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */; };
@@ -41,6 +42,7 @@
 		94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */; };
 		9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */; };
 		981B6B6B3250A98F8D9B2D75 /* MontageEditorScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13AE425F0651F6C8541624CD /* MontageEditorScreen.swift */; };
+		9966A94610D45097BC55ED0D /* ScreenBrightness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD206CE29D50125C15E690A /* ScreenBrightness.swift */; };
 		A304462C3FFA218042A8406B /* clip-saved.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7CAD40D813E106259E034E9B /* clip-saved.wav */; };
 		A6C99E82305EFA469FCC1964 /* LibraryDragSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89ACBA146B48AB0343E758F3 /* LibraryDragSelect.swift */; };
 		A743C45D6040EA766571DB12 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C10A0DE01771B762EA06D28 /* AppContainer.swift */; };
@@ -73,6 +75,7 @@
 		2A8C1E328F17018C98480666 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
 		34092EE4CA7A57B1A43FD5D9 /* HighlightBot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HighlightBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3823F8B9385515C059B6E381 /* HighlightCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HighlightCore; path = HighlightCore; sourceTree = SOURCE_ROOT; };
+		3CD206CE29D50125C15E690A /* ScreenBrightness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenBrightness.swift; sourceTree = "<group>"; };
 		3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
 		3EF4F34576C4AA160173E3E7 /* FrameTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameTap.swift; sourceTree = "<group>"; };
 		44D86C565B7283A4733D16DE /* PhotosSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosSaver.swift; sourceTree = "<group>"; };
@@ -105,6 +108,7 @@
 		BFF01A657AE8AFD210E933EC /* SegmentedRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedRecorder.swift; sourceTree = "<group>"; };
 		CD7B6C5BB9DCAE6A201118D1 /* ExportSpeedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSpeedStore.swift; sourceTree = "<group>"; };
 		D902DE98A84479C76D90B8AB /* ThumbnailImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailImage.swift; sourceTree = "<group>"; };
+		DB14BDF939CC747BC6B68662 /* PowerModeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerModeMonitor.swift; sourceTree = "<group>"; };
 		E1B7DB62E3F12BFF3CAE8189 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		EA14FB816379FF37F46C4D57 /* TapTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapTrigger.swift; sourceTree = "<group>"; };
 		EA71B603A15346D34DB8BEE7 /* MontageExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MontageExporter.swift; sourceTree = "<group>"; };
@@ -146,6 +150,8 @@
 				5B70E71D459FA79466779634 /* AppDirectories.swift */,
 				6D3C44C696CAAD0D675271F2 /* Log.swift */,
 				AEA49A4BA94CF37EF4806662 /* PermissionsManager.swift */,
+				DB14BDF939CC747BC6B68662 /* PowerModeMonitor.swift */,
+				3CD206CE29D50125C15E690A /* ScreenBrightness.swift */,
 				12DC35A01A9ECFD0E0CE63E9 /* StorageMonitor.swift */,
 				6294A5C9A65CAC5A8EE46795 /* ThermalMonitor.swift */,
 			);
@@ -408,12 +414,14 @@
 				45463AC756EA95AE04A63E2B /* PermissionsManager.swift in Sources */,
 				8E024044B16993A1028AB37A /* PhotosSaver.swift in Sources */,
 				A74BEDCE4C68C83277A91882 /* PlayerLayerView.swift in Sources */,
+				877C026C464CEFDA9DD179A6 /* PowerModeMonitor.swift in Sources */,
 				859215D15F8EB6371FDE1638 /* PreviewLayerView.swift in Sources */,
 				6F97595CD779A61F5825795D /* RecordScreen.swift in Sources */,
 				BC6D92A5E1A3AEE96B0CD69F /* RecordingPipeline.swift in Sources */,
 				6F6CD203FCFE658E0D56787D /* RootView.swift in Sources */,
 				241834767E3EC217DB544259 /* SampleFanout.swift in Sources */,
 				DA6F29A951FB911AF55F7007 /* SaveFeedback.swift in Sources */,
+				9966A94610D45097BC55ED0D /* ScreenBrightness.swift in Sources */,
 				58FBF577378D38524D35B676 /* SegmentedRecorder.swift in Sources */,
 				FFA95BF88E0CD0BA63573355 /* SettingsScreen.swift in Sources */,
 				36F112ED5C6E5502FC875759 /* SettingsStore.swift in Sources */,

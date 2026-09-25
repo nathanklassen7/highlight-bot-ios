@@ -122,6 +122,18 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         session.synchronizationClock ?? CMClockGetHostTimeClock()
     }
 
+    /// Disabling the preview connection stops the ISP producing the preview
+    /// stream, which is real power saved rather than pixels hidden. The data
+    /// output has its own connection, so recording carries on.
+    @MainActor
+    func setPreviewEnabled(_ enabled: Bool) {
+        guard let connection = previewLayer?.connection, connection.isEnabled != enabled else { return }
+        connection.isEnabled = enabled
+        Log.capture.info("Preview connection \(enabled ? "enabled" : "disabled", privacy: .public)")
+        // The layer showed nothing while off; make sure it comes back upright.
+        if enabled { catchUpRotation() }
+    }
+
     /// Keeps the preview upright for whichever way the phone is held and
     /// publishes the matching capture angle. Idempotent per device.
     @MainActor

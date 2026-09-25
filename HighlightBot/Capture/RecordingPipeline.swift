@@ -73,9 +73,12 @@ enum PipelineError: LocalizedError {
 ///
 /// Per recording session it builds a fresh recorder and fanout (so config
 /// changes apply on the next start), then runs three tasks: 1 Hz metrics,
-/// thermal-driven frame-rate changes, and capture-event forwarding to the
-/// coordinator. The capture-event task lives for the pipeline's lifetime
-/// because `CaptureSource.events` is a single stream.
+/// thermal- and power-driven frame-rate changes, and capture-event
+/// forwarding to the coordinator. The capture-event task lives for the
+/// pipeline's lifetime because `CaptureSource.events` is a single stream.
+///
+/// Frame rate follows `FrameRatePolicy`: the idle viewfinder runs at 30 fps
+/// and the configured rate is only requested for the span of a recording.
 /// `@unchecked Sendable`: `source` is a non-Sendable protocol type owned only
 /// here; all mutable state sits behind `state`.
 final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
@@ -87,6 +90,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     private let audioListener: (any AudioSampleListener)?
     private let coordinator: SessionCoordinator
     private let thermal = ThermalMonitor()
+    private let powerMode = PowerModeMonitor()
     private let recorderQueue = DispatchQueue(label: "com.highlightbot.recorder", qos: .utility)
 
     private struct State: Sendable {
@@ -94,6 +98,10 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         /// Config the source was last configured with; nil until `startPreview`.
         var configuredConfig: RecordingConfig?
         var isSourceRunning = false
+        /// Whether the viewfinder should be live. Set by `startPreview`, cleared
+        /// by `stopPreview`; a stop that lands while the camera is still
+        /// starting is honoured once the start returns.
+        var previewWanted = false
         var recorder: SegmentedRecorder?
         var fanout: SampleFanout?
         var isRecording = false
@@ -167,12 +175,21 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
 
     // MARK: - Preview lifecycle
 
-    /// Runs the camera so the viewfinder is live without recording. Reconfigures
-    /// the source if the config changed since the last configure. Safe to call
-    /// repeatedly; a no-op while recording.
+    /// Runs the camera so the viewfinder is live without recording, at the
+    /// idle frame rate. Reconfigures the source if the config changed since
+    /// the last configure. Safe to call repeatedly; a no-op while recording.
     func startPreview() async throws {
-        let (config, configured, running, recording) = state.withLock {
-            ($0.config, $0.configuredConfig, $0.isSourceRunning, $0.isRecording)
+        try await ensureSourceRunning()
+        guard !state.withLock({ $0.isRecording }) else { return }
+        await applyFrameRatePolicy()
+    }
+
+    /// Configure (if needed) and start the source. Does not touch the frame
+    /// rate; callers pick idle or recording.
+    private func ensureSourceRunning() async throws {
+        let (config, configured, running, recording) = state.withLock { s in
+            s.previewWanted = true
+            return (s.config, s.configuredConfig, s.isSourceRunning, s.isRecording)
         }
         if recording { return }
 
@@ -185,7 +202,17 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         }
         if !running {
             try await source.start()
-            state.withLock { $0.isSourceRunning = true }
+            // A stopPreview() that arrived while the camera was starting wins;
+            // otherwise the viewfinder would stay up behind another tab.
+            let stillWanted = state.withLock { s in
+                if s.previewWanted { s.isSourceRunning = true }
+                return s.previewWanted
+            }
+            guard stillWanted else {
+                await source.stop()
+                Log.session.info("Preview start abandoned; camera stopped")
+                return
+            }
             Log.session.info("Preview started")
         }
         ensureEventsTask()
@@ -193,6 +220,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
 
     /// Stops the camera entirely (also stops recording if active).
     func stopPreview() async {
+        state.withLock { $0.previewWanted = false }
         if state.withLock({ $0.isRecording }) {
             await stopRecording()
         }
@@ -216,7 +244,11 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         }
 
         // Camera must be configured with the current config and running.
-        try await startPreview()
+        try await ensureSourceRunning()
+        // Bring the camera up from the idle rate before any frame reaches the
+        // writer, so the first segment is already at the recording rate.
+        let recordingRate = Self.recordingFrameRate(for: config)
+        await source.setFrameRate(recordingRate)
 
         // Freeze before the angle is read, never after: the writer stamps the
         // transform once and the ring holds one initialization segment per
@@ -241,7 +273,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             s.recorder = recorder
             s.fanout = fanout
             s.isRecording = true
-            s.currentFrameRate = config.frameRate
+            s.currentFrameRate = recordingRate
             s.lastRingWriteMillis = 0
         }
         ensureEventsTask()
@@ -272,6 +304,10 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             try await ring.clear()
         } catch {
             Log.ring.error("ring.clear failed: \(error.localizedDescription, privacy: .public)")
+        }
+        // Back to the idle rate; the viewfinder does not need 60 fps.
+        if state.withLock({ $0.isSourceRunning }) {
+            await applyFrameRatePolicy()
         }
         Log.session.info("Recording stopped")
     }
@@ -422,32 +458,53 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             }
         }
 
+        // Both streams yield their current value first, so the policy is
+        // re-applied once at session start and then on every change.
         let thermalStates = thermal.states()
         let thermalTask = Task(priority: .utility) { [weak self] in
-            for await thermalState in thermalStates {
+            for await _ in thermalStates {
                 if Task.isCancelled { return }
                 guard let self else { return }
-                await self.applyThermalState(thermalState)
+                await self.applyFrameRatePolicy()
             }
         }
 
-        state.withLock { $0.sessionTasks = [metricsTask, thermalTask] }
+        let powerStates = powerMode.states()
+        let powerTask = Task(priority: .utility) { [weak self] in
+            for await _ in powerStates {
+                if Task.isCancelled { return }
+                guard let self else { return }
+                await self.applyFrameRatePolicy()
+            }
+        }
+
+        state.withLock { $0.sessionTasks = [metricsTask, thermalTask, powerTask] }
     }
 
-    /// `.serious`/`.critical` → 30 fps; `.nominal`/`.fair` → configured rate.
-    private func applyThermalState(_ thermalState: ProcessInfo.ThermalState) async {
-        let (configured, current) = state.withLock { ($0.config.frameRate, $0.currentFrameRate) }
-        let target: Int
-        switch thermalState {
-        case .serious, .critical:
-            target = min(30, configured)
-        case .nominal, .fair:
-            target = configured
-        @unknown default:
-            target = configured
-        }
-        guard target != current else { return }
-        Log.session.notice("Thermal state \(thermalState.rawValue): frame rate \(current) → \(target)")
+    /// The rate a recording should run right now, given heat and power state.
+    private static func recordingFrameRate(for config: RecordingConfig) -> Int {
+        let info = ProcessInfo.processInfo
+        return FrameRatePolicy.target(
+            configured: config.frameRate,
+            isRecording: true,
+            thermalState: info.thermalState,
+            lowPowerMode: info.isLowPowerModeEnabled
+        )
+    }
+
+    /// Asks the source for whatever `FrameRatePolicy` says the rate should be.
+    /// The source ignores a request matching its current rate, so this is
+    /// cheap to call on every thermal or power change.
+    private func applyFrameRatePolicy() async {
+        let (config, recording) = state.withLock { ($0.config, $0.isRecording) }
+        let info = ProcessInfo.processInfo
+        let target = FrameRatePolicy.target(
+            configured: config.frameRate,
+            isRecording: recording,
+            thermalState: info.thermalState,
+            lowPowerMode: info.isLowPowerModeEnabled
+        )
+        Log.session.debug("Frame rate policy → \(target) fps (recording=\(recording) thermal=\(info.thermalState.rawValue) lowPower=\(info.isLowPowerModeEnabled))")
         // Success emits `.formatChanged`, which updates `currentFrameRate`.
         // High-fps slo-mo formats are sometimes locked to 120/240; `setFrameRate`
         // is then a no-op and metrics keep reporting the real rate.
