@@ -33,12 +33,6 @@ final class CPUUsageSampler: Sendable {
         }
     }
 
-    /// Forget the previous sample so the next call starts a fresh interval
-    /// (e.g. at recording start, so idle time is not averaged in).
-    func reset() {
-        last.withLock { $0 = nil }
-    }
-
     private static func seconds(_ time: timeval) -> Double {
         Double(time.tv_sec) + Double(time.tv_usec) / 1_000_000
     }

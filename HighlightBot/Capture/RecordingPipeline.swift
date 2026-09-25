@@ -75,10 +75,11 @@ enum PipelineError: LocalizedError {
 /// `HighlightCore.RecordingBackend` for the coordinator. The App creates one.
 ///
 /// Per recording session it builds a fresh recorder and fanout (so config
-/// changes apply on the next start), then runs three tasks: 1 Hz metrics,
-/// thermal- and power-driven frame-rate changes, and capture-event
-/// forwarding to the coordinator. The capture-event task lives for the
-/// pipeline's lifetime because `CaptureSource.events` is a single stream.
+/// changes apply on the next start) and runs thermal- and power-driven
+/// frame-rate changes. Two longer-lived tasks sit alongside: 1 Hz metrics
+/// for as long as the camera runs, and capture-event forwarding to the
+/// coordinator for the pipeline's lifetime (`CaptureSource.events` is a
+/// single stream).
 ///
 /// Frame rate follows `FrameRatePolicy`: the idle viewfinder runs at 30 fps
 /// and the configured rate is only requested for the span of a recording.
@@ -113,6 +114,8 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         var lastRingWriteMillis: Double = 0
         var subscribers: [UUID: AsyncStream<PipelineMetrics>.Continuation] = [:]
         var sessionTasks: [Task<Void, Never>] = []
+        /// Runs while the source runs; see `startMetricsTask`.
+        var metricsTask: Task<Void, Never>?
         var eventsTask: Task<Void, Never>?
     }
 
@@ -138,6 +141,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
     deinit {
         state.withLock { s in
             s.eventsTask?.cancel()
+            s.metricsTask?.cancel()
             for task in s.sessionTasks { task.cancel() }
             for continuation in s.subscribers.values { continuation.finish() }
         }
@@ -166,7 +170,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         }
     }
 
-    /// Independent stream per caller; emits ~1 Hz while recording.
+    /// Independent stream per caller; emits ~1 Hz while the camera is running.
     func metrics() -> AsyncStream<PipelineMetrics> {
         let id = UUID()
         let (stream, continuation) = AsyncStream.makeStream(of: PipelineMetrics.self, bufferingPolicy: .bufferingNewest(1))
@@ -218,6 +222,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
                 return
             }
             Log.session.info("Preview started")
+            startMetricsTask()
         }
         ensureEventsTask()
     }
@@ -231,6 +236,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         guard state.withLock({ $0.isSourceRunning }) else { return }
         await source.stop()
         state.withLock { $0.isSourceRunning = false }
+        stopMetricsTask()
         Log.session.info("Preview stopped")
     }
 
@@ -447,16 +453,17 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         case .runtimeError(let message):
             Log.session.error("Capture failed: \(message, privacy: .public)")
             state.withLock { $0.isSourceRunning = false }
+            stopMetricsTask()
             guard isRecording else { return }
             await coordinator.captureDidFail(reason: message)
         }
     }
 
-    private func startSessionTasks() {
-        // Start the CPU interval at the session boundary so the first reading
-        // covers recording only, not however long the viewfinder sat idle.
-        cpu.reset()
-        let metricsTask = Task(priority: .utility) { [weak self] in
+    /// 1 Hz metrics for as long as the camera runs, recording or not, so the
+    /// overlay can show idle cost (frame rate, CPU) as well as session health.
+    /// Replaces any previous task.
+    private func startMetricsTask() {
+        let task = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 let snapshot = await self.collectMetrics()
@@ -464,7 +471,22 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        let previous = state.withLock { s -> Task<Void, Never>? in
+            defer { s.metricsTask = task }
+            return s.metricsTask
+        }
+        previous?.cancel()
+    }
 
+    private func stopMetricsTask() {
+        let task = state.withLock { s -> Task<Void, Never>? in
+            defer { s.metricsTask = nil }
+            return s.metricsTask
+        }
+        task?.cancel()
+    }
+
+    private func startSessionTasks() {
         // Both streams yield their current value first, so the policy is
         // re-applied once at session start and then on every change.
         let thermalStates = thermal.states()
@@ -485,7 +507,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             }
         }
 
-        state.withLock { $0.sessionTasks = [metricsTask, thermalTask, powerTask] }
+        state.withLock { $0.sessionTasks = [thermalTask, powerTask] }
     }
 
     /// The rate a recording should run right now, given heat and power state.
