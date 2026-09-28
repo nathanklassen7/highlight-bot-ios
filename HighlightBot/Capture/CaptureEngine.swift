@@ -62,6 +62,11 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     @MainActor private weak var previewLayer: AVCaptureVideoPreviewLayer?
     @MainActor private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     @MainActor private var rotationObservation: NSKeyValueObservation?
+    /// The preview host counter-rotates against interface rotation (QA1890), so
+    /// the connection angle is stamped once per preview layer and then left
+    /// alone. Updating it on every heading change would spin the image on top
+    /// of that lock.
+    @MainActor private var didApplyPreviewConnectionRotation = false
     /// Angle and freeze flag share one lock so a reader can never see the
     /// angle move after the freeze that was supposed to pin it.
     private struct Rotation: Sendable {
@@ -91,6 +96,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
         previewLayer = layer
+        didApplyPreviewConnectionRotation = false
         // The preview connection only exists once the session has a video input.
         // If we are already configured, wire orientation now; otherwise
         // `configureOnQueue` does it as soon as the device is chosen.
@@ -111,9 +117,9 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             defer { state.isFrozen = frozen }
             return state.isFrozen != frozen
         }
-        // Nothing followed the horizon while frozen, so the preview is stale by
-        // however far the phone turned; pull it forward instead of waiting for
-        // the next rotation event.
+        // Capture angle stopped following the horizon while frozen; snap it to
+        // the current heading. The preview host's counter-rotation is what
+        // keeps the viewfinder still, so the connection angle is left alone.
         guard changed, !frozen else { return }
         Task { @MainActor [weak self] in self?.catchUpRotation() }
     }
@@ -130,48 +136,59 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         guard let connection = previewLayer?.connection, connection.isEnabled != enabled else { return }
         connection.isEnabled = enabled
         Log.capture.info("Preview connection \(enabled ? "enabled" : "disabled", privacy: .public)")
-        // The layer showed nothing while off; make sure it comes back upright.
+        // Capture angle may have moved while the connection was off.
         if enabled { catchUpRotation() }
     }
 
     /// Keeps the preview upright for whichever way the phone is held and
-    /// publishes the matching capture angle. Idempotent per device.
+    /// publishes the matching capture angle. Idempotent per device and preview
+    /// layer: a new layer (the SwiftUI host was recreated) needs a new
+    /// coordinator even if the camera is the same.
     @MainActor
     private func installRotationCoordinator(device: AVCaptureDevice) {
-        if let existing = rotationCoordinator, existing.device == device, previewLayer != nil {
-            applyRotation(from: existing)
+        if let existing = rotationCoordinator,
+           existing.device == device,
+           existing.previewLayer === previewLayer {
+            applyRotation(from: existing, applyToPreviewConnection: !didApplyPreviewConnectionRotation)
             return
         }
         rotationObservation?.invalidate()
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
         rotationCoordinator = coordinator
-        applyRotation(from: coordinator)
+        applyRotation(from: coordinator, applyToPreviewConnection: true)
         rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coordinator, _ in
             let preview = coordinator.videoRotationAngleForHorizonLevelPreview
             let capture = coordinator.videoRotationAngleForHorizonLevelCapture
             Task { @MainActor [weak self] in
-                self?.applyRotation(preview: preview, capture: capture)
+                self?.applyRotation(preview: preview, capture: capture, applyToPreviewConnection: false)
             }
         }
     }
 
     @MainActor
-    private func applyRotation(from coordinator: AVCaptureDevice.RotationCoordinator) {
-        applyRotation(preview: coordinator.videoRotationAngleForHorizonLevelPreview,
-                      capture: coordinator.videoRotationAngleForHorizonLevelCapture)
+    private func applyRotation(
+        from coordinator: AVCaptureDevice.RotationCoordinator,
+        applyToPreviewConnection: Bool
+    ) {
+        applyRotation(
+            preview: coordinator.videoRotationAngleForHorizonLevelPreview,
+            capture: coordinator.videoRotationAngleForHorizonLevelCapture,
+            applyToPreviewConnection: applyToPreviewConnection
+        )
     }
 
     /// A frozen session keeps the angle the writer was given and leaves the
     /// preview where it was, so the viewfinder shows what the file will hold.
+    /// The preview connection angle is applied once per layer; later heading
+    /// changes only update the capture angle the writer will stamp.
     @MainActor
-    private func applyRotation(preview: CGFloat, capture: CGFloat) {
+    private func applyRotation(preview: CGFloat, capture: CGFloat, applyToPreviewConnection: Bool) {
         let frozen = rotation.withLock { state -> Bool in
             guard !state.isFrozen else { return true }
             state.angle = CGFloat(CaptureRotation.snapped(Double(capture)))
             return false
         }
         guard !frozen else { return }
-        let snapped = CGFloat(CaptureRotation.snapped(Double(preview)))
         guard let connection = previewLayer?.connection else { return }
         // Front preview is a mirror; the recorded buffers are not (see configure).
         if connection.isVideoMirroringSupported {
@@ -179,14 +196,17 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             let device = rotationCoordinator?.device
             connection.isVideoMirrored = device?.position == .front
         }
+        guard applyToPreviewConnection, !didApplyPreviewConnectionRotation else { return }
+        let snapped = CGFloat(CaptureRotation.snapped(Double(preview)))
         guard connection.isVideoRotationAngleSupported(snapped) else { return }
         connection.videoRotationAngle = snapped
+        didApplyPreviewConnectionRotation = true
     }
 
     @MainActor
     private func catchUpRotation() {
         guard let rotationCoordinator else { return }
-        applyRotation(from: rotationCoordinator)
+        applyRotation(from: rotationCoordinator, applyToPreviewConnection: false)
     }
 
     func setConsumer(_ consumer: (any SampleConsumer)?) {
