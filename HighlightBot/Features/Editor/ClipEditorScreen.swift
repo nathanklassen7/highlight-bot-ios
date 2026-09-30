@@ -44,7 +44,6 @@ struct ClipEditorScreen: View {
 
     @Environment(AppContainer.self) private var container
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var player = AVPlayer()
@@ -111,15 +110,8 @@ struct ClipEditorScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topBar
-
-                preview
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                controls
-            }
-            .padding(.horizontal, ScreenMetrics.horizontal)
+            editorLayout
+                .padding(.horizontal, ScreenMetrics.horizontal)
             .speedMenuOverlay(
                 isExpanded: $isSpeedMenuExpanded,
                 rates: SlowMotionSegment.rates,
@@ -206,6 +198,47 @@ struct ClipEditorScreen: View {
 
     // MARK: - Chrome
 
+    /// iPhone landscape: the top bar spans the width, the preview fills the
+    /// height beside a fixed-width inspector, and the timeline spans the full
+    /// width below both. Everywhere else the inspector stacks below the timeline.
+    private var isSideBySide: Bool {
+        verticalSizeClass == .compact
+    }
+
+    /// Width of the inspector column in landscape. Narrow enough that a 16:9
+    /// preview can use the full height between the top bar and the timeline.
+    private static let inspectorWidth: CGFloat = 272
+
+    @ViewBuilder
+    private var editorLayout: some View {
+        if isSideBySide {
+            VStack(spacing: 4) {
+                topBar
+
+                HStack(alignment: .top, spacing: 16) {
+                    preview
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    inspector(fillsHeight: true)
+                        .frame(width: Self.inspectorWidth)
+                        .frame(maxHeight: .infinity)
+                }
+
+                timeline
+                    .padding(.bottom, 8)
+            }
+        } else {
+            VStack(spacing: 0) {
+                topBar
+
+                preview
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                controls
+            }
+        }
+    }
+
     private var topBar: some View {
         HStack {
             Button {
@@ -216,12 +249,6 @@ struct ClipEditorScreen: View {
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)
-
-            Spacer()
-
-            Text("Trim/edit")
-                .font(.headline)
-                .foregroundStyle(.white)
 
             Spacer()
 
@@ -284,6 +311,11 @@ struct ClipEditorScreen: View {
             let fit = Self.aspectFitSize(videoSize, in: geometry.size)
             ZStack {
                 zoomedPlayer(fitting: fit)
+                    .overlay(alignment: .topTrailing) {
+                        zoomResetButton
+                            .padding(8)
+                            .animation(.easeInOut(duration: 0.15), value: isZoomed)
+                    }
                 playPauseButton
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -349,7 +381,9 @@ struct ClipEditorScreen: View {
             }
     }
 
-    /// Shows the zoom level; tapping returns to the full frame.
+    /// Pill in the preview's corner showing the zoom level; tapping returns
+    /// to the full frame. Sits on the video itself so it's next to the thing
+    /// it describes and doesn't shift the inspector.
     @ViewBuilder
     private var zoomResetButton: some View {
         if isZoomed {
@@ -361,8 +395,12 @@ struct ClipEditorScreen: View {
                 Label(zoomText, systemImage: "arrow.down.right.and.arrow.up.left")
                     .font(.footnote.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.yellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.55), in: Capsule())
             }
             .buttonStyle(.plain)
+            .transition(.opacity)
             .accessibilityLabel("Zoomed \(zoomText)")
             .accessibilityHint("Resets to the full frame")
         }
@@ -379,16 +417,17 @@ struct ClipEditorScreen: View {
 
     private var controls: some View {
         VStack(spacing: 10) {
-            HStack {
-                Text(TrimRangeBar.timeText(start))
-                Spacer()
-                Text(selectionText)
-                    .foregroundStyle(hasChanges ? Color.yellow : Color.white.opacity(0.85))
-                Spacer()
-                Text(TrimRangeBar.timeText(end))
-            }
-            .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.85))
+            timeline
+            inspector(fillsHeight: false)
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 16)
+    }
+
+    /// Range readout and the filmstrip with its trim and slow-mo handles.
+    private var timeline: some View {
+        VStack(spacing: 2) {
+            timelineHeader
 
             TrimRangeBar(
                 duration: duration,
@@ -413,78 +452,192 @@ struct ClipEditorScreen: View {
                     seek(to: time, preview: true)
                 }
             )
-            .frame(height: 64)
+            .frame(height: 54)
             .padding(.vertical, 4)
-
-            slowMotionBar
-
-            Text(hintText)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
         }
-        .padding(.top, 8)
-        .padding(.bottom, 16)
     }
 
-    /// Compact-width portrait (iPhone). Landscape keeps the single-row bar.
-    private var stacksSlowMotionControls: Bool {
-        horizontalSizeClass == .compact && verticalSizeClass == .regular
+    // MARK: - Timeline header
+
+    /// Measured widths used to keep the slow-mo range label centred over its
+    /// segment without running into the start/end readouts.
+    private struct TimelineHeaderMetrics: Equatable {
+        var width: CGFloat = 0
+        var leading: CGFloat = 0
+        var trailing: CGFloat = 0
+        var label: CGFloat = 0
     }
 
-    /// Add/remove the slow-mo segment and, once there is one, pick its speed.
-    /// The speed menu floats above this bar via `speedMenuOverlay`.
-    @ViewBuilder
-    private var slowMotionBar: some View {
-        Group {
-            if stacksSlowMotionControls {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        addSlowMotionButton
-                        Spacer(minLength: 0)
-                        zoomResetButton
-                    }
-                    if let slowMotion {
-                        HStack(spacing: 12) {
-                            slowMotionSpeedTrigger(slowMotion)
-                            slowMotionDurationLabel(slowMotion)
-                            Spacer(minLength: 0)
-                        }
-                        slowMotionReplayToggle
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            } else {
-                HStack(spacing: 12) {
-                    addSlowMotionButton
-                    if let slowMotion {
-                        slowMotionDivider
-                        slowMotionSpeedTrigger(slowMotion)
-                        slowMotionDurationLabel(slowMotion)
-                        slowMotionDivider
-                        slowMotionReplayToggle
-                            .fixedSize()
-                    }
-                    Spacer(minLength: 0)
-                    zoomResetButton
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.white.opacity(0.08), in: Capsule())
+    @State private var headerMetrics = TimelineHeaderMetrics()
+
+    /// Start and end readouts at the edges; when a slow-mo exists its range
+    /// sits centred over the green segment (clamped away from the edge labels).
+    private var timelineHeader: some View {
+        ZStack(alignment: .leading) {
+            HStack {
+                Text(TrimRangeBar.timeText(start))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerMetrics.leading = $0 }
+                Spacer()
+                Text(TrimRangeBar.timeText(end))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerMetrics.trailing = $0 }
+            }
+            .foregroundStyle(.white.opacity(0.85))
+
+            if let slowMotion {
+                slowMotionRangeLabel(slowMotion)
+                    .fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerMetrics.label = $0 }
+                    .offset(x: slowMotionLabelOffset(for: slowMotion))
+                    .transition(.opacity)
             }
         }
+        .font(.caption.weight(.semibold).monospacedDigit())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerMetrics.width = $0 }
         .animation(.easeInOut(duration: 0.15), value: slowMotion == nil)
-        .animation(.easeInOut(duration: 0.15), value: isSlowMotionReplay)
-        .animation(.easeInOut(duration: 0.15), value: stacksSlowMotionControls)
-        .animation(.easeInOut(duration: 0.15), value: isZoomed)
     }
 
-    /// Removing is always allowed so a lapsed subscriber can still clear a segment.
+    private func slowMotionRangeLabel(_ slowMotion: SlowMotionSegment) -> some View {
+        Label {
+            Text("\(TrimRangeBar.timeText(slowMotion.start)) – \(TrimRangeBar.timeText(slowMotion.end))")
+        } icon: {
+            Image(systemName: "tortoise.fill")
+        }
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(Color.green)
+        .accessibilityLabel("Slow-mo from \(TrimRangeBar.timeText(slowMotion.start)) to \(TrimRangeBar.timeText(slowMotion.end))")
+    }
+
+    /// Leading offset that centres the range label over the segment's midpoint.
+    /// The label stops `gap` short of the edge readouts so the three never
+    /// overlap; if the header is too narrow for that, it falls back to centred.
+    /// Assumes `TrimRangeBar` maps 0…`duration` across its full width.
+    private func slowMotionLabelOffset(for segment: SlowMotionSegment) -> CGFloat {
+        let m = headerMetrics
+        guard m.width > 0, m.label > 0, duration > 0 else { return 0 }
+        let gap: CGFloat = 8
+        let midpoint = CGFloat((segment.start + segment.end) / 2 / duration) * m.width
+        let minCenter = m.leading + gap + m.label / 2
+        let maxCenter = m.width - m.trailing - gap - m.label / 2
+        guard minCenter <= maxCenter else { return (m.width - m.label) / 2 }
+        return min(max(midpoint, minCenter), maxCenter) - m.label / 2
+    }
+
+    // MARK: - Inspector
+
+    /// Clip/export summary above the slow-mo controls, divided by a soft rule.
+    /// `fillsHeight` pins Remove to the bottom when the card stretches beside
+    /// the preview in landscape. The speed menu floats above the speed row via
+    /// `speedMenuOverlay`.
+    private func inspector(fillsHeight: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            summaryRows
+
+            Rectangle()
+                .fill(.white.opacity(0.12))
+                .frame(height: 1)
+                .padding(.vertical, 2)
+
+            slowMotionSection
+
+            if fillsHeight {
+                Spacer(minLength: 0)
+            }
+
+            if slowMotion != nil {
+                Rectangle()
+                    .fill(.white.opacity(0.12))
+                    .frame(height: 1)
+                    .padding(.top, 2)
+                removeSlowMotionButton
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .animation(.easeInOut(duration: 0.15), value: slowMotion == nil)
+        .animation(.easeInOut(duration: 0.15), value: isSlowMotionReplay)
+    }
+
+    /// Selected length and the length the result will run. The export line
+    /// carries the slow-mo delta so the two numbers explain each other.
+    private var summaryRows: some View {
+        VStack(spacing: 4) {
+            inspectorRow(isTrimmed ? "Selected" : "Clip") {
+                HStack(spacing: 4) {
+                    Text(TrimRangeBar.timeText(selectedDuration))
+                    if isTrimmed {
+                        Text("of \(TrimRangeBar.timeText(duration))")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+            }
+            inspectorRow(isConfiguring ? "Montage" : "Export") {
+                HStack(spacing: 4) {
+                    Text(TrimRangeBar.timeText(outputDuration))
+                        .foregroundStyle(hasChanges ? Color.yellow : Color.white)
+                    if extraSlowMotionDuration > 0.01 {
+                        Text("(+\(TrimRangeBar.timeText(extraSlowMotionDuration)))")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .font(.footnote.weight(.semibold).monospacedDigit())
+        .foregroundStyle(.white)
+    }
+
+    private func inspectorRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(.white.opacity(0.6))
+            Spacer(minLength: 8)
+            value()
+        }
+        .frame(minHeight: 20)
+    }
+
+    /// With a segment: header, speed, replay. Without one: the Add button and
+    /// a one-line description of what it does.
+    @ViewBuilder
+    private var slowMotionSection: some View {
+        if let slowMotion {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Slow-mo", systemImage: "tortoise.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 8)
+                    slowMotionDurationLabel(slowMotion)
+                }
+                .frame(height: 18)
+                HStack {
+                    Text("Speed")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 8)
+                    slowMotionSpeedTrigger(slowMotion)
+                }
+                .frame(minHeight: 24)
+                slowMotionReplayToggle
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                addSlowMotionButton
+                Text("Inserts a 1-second slow-mo halfway through the selection. Drag its green handles to move it.")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Adding is gated behind Pro; the button opens the paywall when locked.
     private var addSlowMotionButton: some View {
-        let locked = slowMotion == nil && !container.subscriptions.allows(.slowMotion)
+        let locked = !container.subscriptions.allows(.slowMotion)
         return Button {
             if locked {
                 player.pause()
@@ -494,24 +647,33 @@ struct ClipEditorScreen: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Label(
-                    slowMotion == nil ? "Add Slow-mo" : "Remove Slow-mo",
-                    systemImage: slowMotion == nil ? "plus.circle" : "minus.circle"
-                )
+                Label("Add Slow-mo", systemImage: "plus.circle.fill")
                 if locked {
                     ProBadge()
                 }
+                Spacer(minLength: 0)
             }
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(slowMotion == nil ? Color.white : Color.green)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint(slowMotionHint(locked: locked))
+        .accessibilityHint(locked ? "Slow-mo needs Highlight Bot Pro" : "Inserts a 1 second slow-mo segment halfway through the selection")
     }
 
-    private func slowMotionHint(locked: Bool) -> String {
-        if locked { return "Slow-mo needs Highlight Bot Pro" }
-        return slowMotion == nil ? "Inserts a 1 second slow-mo segment halfway through the selection" : ""
+    /// Removing is always allowed so a lapsed subscriber can still clear a segment.
+    private var removeSlowMotionButton: some View {
+        Button {
+            toggleSlowMotion()
+        } label: {
+            Label("Remove Slow-mo", systemImage: "minus.circle")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.red)
+                .frame(minHeight: 20)
+        }
+        .buttonStyle(.plain)
     }
 
     private func slowMotionSpeedTrigger(_ slowMotion: SlowMotionSegment) -> some View {
@@ -538,12 +700,6 @@ struct ClipEditorScreen: View {
             .tint(.green)
             .controlSize(.small)
             .accessibilityHint("Plays the trimmed clip at normal speed, then replays the slow-mo segment")
-    }
-
-    private var slowMotionDivider: some View {
-        Divider()
-            .frame(height: 16)
-            .overlay(Color.white.opacity(0.3))
     }
 
     private var exportingOverlay: some View {
@@ -611,25 +767,6 @@ struct ClipEditorScreen: View {
             isSlowMotionReplay: slowMotion != nil && isSlowMotionReplay,
             crop: isZoomed ? crop.clamped() : nil
         )
-    }
-
-    private var selectionText: String {
-        let selected = "\(TrimRangeBar.timeText(selectedDuration)) selected"
-        guard slowMotion != nil else { return selected }
-        return "\(selected) · \(isConfiguring ? "makes" : "saves") \(TrimRangeBar.timeText(outputDuration))"
-    }
-
-    private var hintText: String {
-        let saveNote = isConfiguring
-            ? "Done keeps the edit for the montage; nothing is encoded yet."
-            : "Saving re-encodes the clip."
-        if slowMotion == nil {
-            return "Drag the handles to trim. Pinch the video to zoom. \(saveNote)"
-        }
-        if isSlowMotionReplay {
-            return "The clip plays at full speed, then the green range replays in slow-mo. \(saveNote)"
-        }
-        return "Yellow handles trim; green handles bound the slow-mo. \(saveNote)"
     }
 
     private var saveMessage: String {
