@@ -20,7 +20,7 @@
       "localizations" : [
 
       ],
-      "name" : "Highlight Bot Pro",
+      "name" : "HighlightBot Pro",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -37,13 +37,13 @@
           "localizations" : [
             {
               "description" : "Montages and slow-mo editing.",
-              "displayName" : "Highlight Bot Pro",
+              "displayName" : "HighlightBot Pro",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.nathanklassen.highlightbot.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Highlight Bot Pro Monthly",
+          "referenceName" : "HighlightBot Pro Monthly",
           "subscriptionGroupID" : "8F3A61D2",
           "type" : "RecurringSubscription"
         }

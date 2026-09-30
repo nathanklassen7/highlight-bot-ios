@@ -64,7 +64,7 @@ final class BackendProxy: RecordingBackend, @unchecked Sendable {
 @Observable
 final class AppContainer {
     let settings: SettingsStore
-    /// Highlight Bot Pro subscription state; gates montage and slow-mo.
+    /// HighlightBot Pro subscription state; gates montage and slow-mo.
     let subscriptions: SubscriptionStore
     let permissions: PermissionsManager
     let triggerBus: TriggerBus

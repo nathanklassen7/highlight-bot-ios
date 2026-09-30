@@ -660,7 +660,7 @@ struct ClipEditorScreen: View {
             .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint(locked ? "Slow-mo needs Highlight Bot Pro" : "Inserts a 1 second slow-mo segment halfway through the selection")
+        .accessibilityHint(locked ? "Slow-mo needs HighlightBot Pro" : "Inserts a 1 second slow-mo segment halfway through the selection")
     }
 
     /// Removing is always allowed so a lapsed subscriber can still clear a segment.

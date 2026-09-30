@@ -173,7 +173,7 @@ struct SettingsScreen: View {
     private var proSection: some View {
         Section {
             if container.subscriptions.isSubscribed {
-                LabeledContent("Highlight Bot Pro", value: "Active")
+                LabeledContent("HighlightBot Pro", value: "Active")
                 Button("Manage Subscription") {
                     showManageSubscription = true
                 }
@@ -185,7 +185,7 @@ struct SettingsScreen: View {
                         Text("Upgrade")
                             .foregroundStyle(AppPalette.accent)
                     } label: {
-                        Text("Highlight Bot Pro")
+                        Text("HighlightBot Pro")
                             .foregroundStyle(Color.primary)
                     }
                 }
@@ -220,10 +220,10 @@ struct SettingsScreen: View {
         let base = "While recording, saying “clip it” saves the selected clip length. Recognition runs on this device; audio is not sent anywhere."
         guard container.settings.config.voiceTriggerEnabled else { return base }
         if permissions.speech == .denied || permissions.speech == .restricted {
-            return "Speech Recognition is turned off for Highlight Bot. Turn it on in Settings to use the voice trigger."
+            return "Speech Recognition is turned off for HighlightBot. Turn it on in Settings to use the voice trigger."
         }
         if permissions.microphone == .denied || permissions.microphone == .restricted {
-            return "Microphone access is turned off for Highlight Bot. Turn it on in Settings to use the voice trigger."
+            return "Microphone access is turned off for HighlightBot. Turn it on in Settings to use the voice trigger."
         }
         if container.sessionState.isRecording, !container.settings.config.recordAudio {
             return base + " With audio recording off, the microphone opens the next time recording starts."

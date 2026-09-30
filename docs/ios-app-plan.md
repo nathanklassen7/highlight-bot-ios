@@ -1,4 +1,4 @@
-# Highlight Bot iOS — Implementation Plan
+# HighlightBot iOS — Implementation Plan
 
 ## Summary
 

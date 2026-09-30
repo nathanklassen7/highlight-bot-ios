@@ -1,4 +1,4 @@
-# XcodeGen spec for the Highlight Bot iOS app.
+# XcodeGen spec for the HighlightBot iOS app.
 # Regenerate the project with: xcodegen generate
 name: HighlightBot
 
@@ -44,13 +44,13 @@ targets:
     info:
       path: HighlightBot/Info.plist
       properties:
-        CFBundleDisplayName: Highlight Bot
+        CFBundleDisplayName: HighlightBot
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSCameraUsageDescription: Highlight Bot records video continuously so you can save the last few seconds as a clip.
-        NSMicrophoneUsageDescription: Highlight Bot records audio along with video for your clips.
-        NSPhotoLibraryAddUsageDescription: Highlight Bot saves clips you choose to your Photos library.
-        NSSpeechRecognitionUsageDescription: Highlight Bot listens for “Clip it” while recording so you can save a clip hands-free. Recognition runs on this device.
+        NSCameraUsageDescription: HighlightBot records video continuously so you can save the last few seconds as a clip.
+        NSMicrophoneUsageDescription: HighlightBot records audio along with video for your clips.
+        NSPhotoLibraryAddUsageDescription: HighlightBot saves clips you choose to your Photos library.
+        NSSpeechRecognitionUsageDescription: HighlightBot listens for “Clip it” while recording so you can save a clip hands-free. Recognition runs on this device.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UISupportedInterfaceOrientations:

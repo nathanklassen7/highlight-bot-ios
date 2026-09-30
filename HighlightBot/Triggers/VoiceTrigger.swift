@@ -69,7 +69,7 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
         case .notDetermined:
             return "Voice trigger needs Speech Recognition permission. Allow it in Settings."
         case .denied, .restricted:
-            return "Speech Recognition is turned off for Highlight Bot. Enable it in Settings to use the voice trigger."
+            return "Speech Recognition is turned off for HighlightBot. Enable it in Settings to use the voice trigger."
         @unknown default:
             return "Speech Recognition is unavailable."
         }

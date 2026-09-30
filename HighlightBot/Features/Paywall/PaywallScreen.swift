@@ -1,7 +1,7 @@
 import StoreKit
 import SwiftUI
 
-/// Sales page for Highlight Bot Pro. Present as a sheet; it dismisses itself
+/// Sales page for HighlightBot Pro. Present as a sheet; it dismisses itself
 /// once the subscription is active, so presenters can pick up the action
 /// that was blocked in their `onDismiss`.
 struct PaywallScreen: View {
@@ -82,7 +82,7 @@ struct PaywallScreen: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 8) {
-                Text("Highlight Bot Pro")
+                Text("HighlightBot Pro")
                     .font(.largeTitle.weight(.bold))
                 Text("Turn the moments you saved into a highlight reel.")
                     .font(.body)
@@ -266,7 +266,7 @@ struct PaywallScreen: View {
         defer { isRestoring = false }
         do {
             if try await !store.restore() {
-                message = "No active Highlight Bot Pro subscription was found for this Apple Account."
+                message = "No active HighlightBot Pro subscription was found for this Apple Account."
             }
         } catch {
             if case StoreKitError.userCancelled = error { return }
@@ -313,6 +313,6 @@ struct ProBadge: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(AppPalette.accent, in: Capsule())
-            .accessibilityLabel("Requires Highlight Bot Pro")
+            .accessibilityLabel("Requires HighlightBot Pro")
     }
 }

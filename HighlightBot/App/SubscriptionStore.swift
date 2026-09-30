@@ -3,7 +3,7 @@ import Observation
 import StoreKit
 import os
 
-/// Features that need Highlight Bot Pro.
+/// Features that need HighlightBot Pro.
 enum ProFeature {
     case montage
     case slowMotion
@@ -19,7 +19,7 @@ enum SubscriptionError: Error, LocalizedError {
     }
 }
 
-/// Highlight Bot Pro, the app's single auto-renewing subscription.
+/// HighlightBot Pro, the app's single auto-renewing subscription.
 ///
 /// Access is read from StoreKit's verified entitlements at launch, on every
 /// return to the foreground, and whenever a transaction arrives. Nothing is

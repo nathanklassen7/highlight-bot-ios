@@ -785,7 +785,7 @@ private struct PermissionsGateView: View {
             Image(systemName: "camera.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.white)
-            Text("Highlight Bot needs camera\(needsMic ? " and microphone" : "") access")
+            Text("HighlightBot needs camera\(needsMic ? " and microphone" : "") access")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.white)
             Text("Video is recorded continuously into a short buffer on this device. Nothing is saved until you tap.")

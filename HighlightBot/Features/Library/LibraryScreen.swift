@@ -453,7 +453,7 @@ struct LibraryScreen: View {
 
     private func montageHint(unlocked: Bool) -> String {
         if !canMakeMontage { return "Select at least \(MontageDraft.minimumClipCount) clips" }
-        return unlocked ? "" : "Montages need Highlight Bot Pro"
+        return unlocked ? "" : "Montages need HighlightBot Pro"
     }
 
     private var bulkStarFAB: some View {

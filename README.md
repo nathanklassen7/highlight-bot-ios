@@ -1,4 +1,4 @@
-# Highlight Bot iOS
+# HighlightBot iOS
 
 Native iOS app that records continuously into a rolling buffer and, on a trigger, saves the last *n* seconds as a shareable `.mp4` without interrupting recording. Point the phone at the court, leave it running, tap when something happens.
 
