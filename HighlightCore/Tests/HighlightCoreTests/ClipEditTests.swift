@@ -48,6 +48,33 @@ struct ClipEditTests {
         #expect(edit.hasChanges(clipDuration: 10))
     }
 
+    @Test("hasChanges is true with only a zoom")
+    func changesWithCrop() {
+        let edit = ClipEdit(start: 0, end: 10, crop: ClipCrop(scale: 2, centerX: 0.5, centerY: 0.5))
+        #expect(edit.hasChanges(clipDuration: 10))
+        #expect(edit.outputDuration == 10)
+    }
+
+    @Test("a 1x crop is not a change")
+    func identityCropNoChange() {
+        let edit = ClipEdit(start: 0, end: 10, crop: .identity)
+        #expect(!edit.hasChanges(clipDuration: 10))
+    }
+
+    @Test("clamped keeps the crop and pulls it inside the frame")
+    func clampedKeepsCrop() {
+        let edit = ClipEdit(start: 0, end: 12, crop: ClipCrop(scale: 2, centerX: 0, centerY: 1))
+        let fitted = edit.clamped(toClipDuration: 10, minimumDuration: 1)
+        #expect(fitted.crop == ClipCrop(scale: 2, centerX: 0.25, centerY: 0.75))
+    }
+
+    @Test("decodes an edit saved before zoom existed")
+    func decodesWithoutCrop() throws {
+        let json = #"{"start":1,"end":4,"isSlowMotionReplay":false}"#
+        let edit = try JSONDecoder().decode(ClipEdit.self, from: Data(json.utf8))
+        #expect(edit.crop == nil)
+    }
+
     @Test("clamped fits a stale edit into a shorter file")
     func clampedShorter() {
         let stale = ClipEdit(start: 1, end: 12, slowMotion: SlowMotionSegment(start: 10, end: 11.5, rate: 0.5))
@@ -69,7 +96,13 @@ struct ClipEditTests {
 
     @Test("round-trips through JSON")
     func codable() throws {
-        let edit = ClipEdit(start: 1, end: 4, slowMotion: SlowMotionSegment(start: 2, end: 3, rate: 0.5), isSlowMotionReplay: true)
+        let edit = ClipEdit(
+            start: 1,
+            end: 4,
+            slowMotion: SlowMotionSegment(start: 2, end: 3, rate: 0.5),
+            isSlowMotionReplay: true,
+            crop: ClipCrop(scale: 2, centerX: 0.4, centerY: 0.6)
+        )
         let data = try JSONEncoder().encode(edit)
         #expect(try JSONDecoder().decode(ClipEdit.self, from: data) == edit)
     }

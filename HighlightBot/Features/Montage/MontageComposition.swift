@@ -122,7 +122,11 @@ enum MontageComposition {
             cursor = try await composition.load(.duration)
 
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
-            layer.setTransform(fitTransform(naturalSize: naturalSize, preferredTransform: transform, into: renderSize), at: itemStart)
+            let crop = edit.effectiveCrop
+            layer.setTransform(fitTransform(naturalSize: naturalSize, preferredTransform: transform, crop: crop, into: renderSize), at: itemStart)
+            if let crop, let cropRectangle = naturalCropRectangle(naturalSize: naturalSize, preferredTransform: transform, crop: crop) {
+                layer.setCropRectangle(cropRectangle, at: itemStart)
+            }
             let instruction = AVMutableVideoCompositionInstruction()
             instruction.timeRange = CMTimeRange(start: itemStart, end: cursor)
             instruction.layerInstructions = [layer]
@@ -144,21 +148,38 @@ enum MontageComposition {
         return Built(composition: composition, videoComposition: videoComposition, workloads: workloads)
     }
 
-    /// Orients `naturalSize` with `preferredTransform`, then scales it to fit
-    /// inside `renderSize` and centres it. Sources that already match the
-    /// render size get exactly `preferredTransform` moved to the origin.
-    static func fitTransform(naturalSize: CGSize, preferredTransform: CGAffineTransform, into renderSize: CGSize) -> CGAffineTransform {
+    /// Orients `naturalSize` with `preferredTransform`, zooms into `crop`, then
+    /// scales it to fit inside `renderSize` and centres it. Sources that
+    /// already match the render size get exactly `preferredTransform` moved to
+    /// the origin.
+    static func fitTransform(
+        naturalSize: CGSize,
+        preferredTransform: CGAffineTransform,
+        crop: ClipCrop? = nil,
+        into renderSize: CGSize
+    ) -> CGAffineTransform {
         let oriented = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         guard oriented.width > 0, oriented.height > 0 else { return preferredTransform }
         let scale = min(renderSize.width / oriented.width, renderSize.height / oriented.height)
         let dx = (renderSize.width - oriented.width * scale) / 2
         let dy = (renderSize.height - oriented.height * scale) / 2
         // Apply the source transform, drag the rotated frame's origin to zero,
-        // scale, then centre. `concatenating` applies left to right.
+        // zoom, scale, then centre. `concatenating` applies left to right.
         return preferredTransform
             .concatenating(CGAffineTransform(translationX: -oriented.minX, y: -oriented.minY))
+            .concatenating(crop?.fillTransform(for: oriented.size) ?? .identity)
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(CGAffineTransform(translationX: dx, y: dy))
+    }
+
+    /// `crop`'s region in the source's natural (unrotated) pixels, which is
+    /// what `setCropRectangle` takes. Without it, a zoomed clip that is
+    /// letterboxed would draw its zoomed-out edges over the bars.
+    static func naturalCropRectangle(naturalSize: CGSize, preferredTransform: CGAffineTransform, crop: ClipCrop) -> CGRect? {
+        let oriented = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        guard oriented.width > 0, oriented.height > 0 else { return nil }
+        let upright = preferredTransform.concatenating(CGAffineTransform(translationX: -oriented.minX, y: -oriented.minY))
+        return crop.rect(in: oriented.size).applying(upright.inverted())
     }
 
     /// Fills the audio track with silence up to `insertAt` when it ends

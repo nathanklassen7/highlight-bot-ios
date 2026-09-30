@@ -70,15 +70,20 @@ final class ClipTrimmer: Sendable {
     ///
     /// With `replay`, the trimmed range stays at 1× and the slow-mo segment is
     /// appended afterwards at `duration / rate`.
+    ///
+    /// With `crop`, the zoomed region is scaled up to fill the source's
+    /// oriented frame, so the result keeps its resolution and orientation.
     func trim(
         _ sourceURL: URL,
         start: Double,
         end: Double,
         slowMotion: SlowMotionSegment? = nil,
         replay: Bool = false,
+        crop: ClipCrop? = nil,
         baseName: String
     ) async throws -> ExportedClip {
-        try Self.validate(ClipEdit(start: start, end: end, slowMotion: slowMotion, isSlowMotionReplay: replay))
+        let edit = ClipEdit(start: start, end: end, slowMotion: slowMotion, isSlowMotionReplay: replay, crop: crop)
+        try Self.validate(edit)
 
         let clock = ContinuousClock()
         let started = clock.now
@@ -91,12 +96,25 @@ final class ClipTrimmer: Sendable {
         )
 
         var expectedDuration = end - start
-        if let slowMotion {
-            let clampedSegment = slowMotion.clamped(to: start, end, minimumDuration: 0)
-            expectedDuration += clampedSegment.addedDuration(replay: replay)
-            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x replay=\(replay) as \(baseName, privacy: .public) (\(preset, privacy: .public))")
-            let composition = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment, replay: replay)
-            try await ClipExporter.runExport(asset: composition, preset: preset, to: outputURL)
+        let clampedSegment = slowMotion?.clamped(to: start, end, minimumDuration: 0)
+        let effectiveCrop = edit.effectiveCrop
+        if clampedSegment != nil || effectiveCrop != nil {
+            if let clampedSegment {
+                expectedDuration += clampedSegment.addedDuration(replay: replay)
+                Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x replay=\(replay) as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+            } else {
+                Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
+            }
+            if let effectiveCrop {
+                Log.export.info("Zooming \(baseName, privacy: .public) to \(effectiveCrop.scale, format: .fixed(precision: 2))x at \(effectiveCrop.centerX, format: .fixed(precision: 3)),\(effectiveCrop.centerY, format: .fixed(precision: 3))")
+            }
+            let built = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment, replay: replay, crop: effectiveCrop)
+            try await ClipExporter.runExport(
+                asset: built.composition,
+                preset: preset,
+                videoComposition: built.videoComposition,
+                to: outputURL
+            )
         } else {
             Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
             try await ClipExporter.runExport(asset: asset, preset: preset, timeRange: range, to: outputURL)
@@ -145,12 +163,17 @@ final class ClipTrimmer: Sendable {
     /// true, the range stays at 1× and the segment is inserted again after it
     /// before the stretch. The video track's orientation transform is carried
     /// over so portrait clips stay portrait.
+    ///
+    /// With `crop`, a video composition is returned too. It applies the
+    /// orientation itself (a video composition ignores the track's
+    /// `preferredTransform`) and then the zoom, rendering at the oriented size.
     private static func composition(
         of asset: AVAsset,
         range: CMTimeRange,
-        slowMotion: SlowMotionSegment,
-        replay: Bool
-    ) async throws -> AVMutableComposition {
+        slowMotion: SlowMotionSegment?,
+        replay: Bool,
+        crop: ClipCrop?
+    ) async throws -> (composition: AVMutableComposition, videoComposition: AVVideoComposition?) {
         let composition = AVMutableComposition()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -171,31 +194,50 @@ final class ClipTrimmer: Sendable {
             }
         }
 
-        let segmentRange = CMTimeRange(
-            start: CMTime(seconds: slowMotion.start, preferredTimescale: 600),
-            duration: CMTime(seconds: slowMotion.duration, preferredTimescale: 600)
-        )
-        let scaledDuration = CMTime(seconds: slowMotion.scaledDuration, preferredTimescale: 600)
+        if let slowMotion {
+            let segmentRange = CMTimeRange(
+                start: CMTime(seconds: slowMotion.start, preferredTimescale: 600),
+                duration: CMTime(seconds: slowMotion.duration, preferredTimescale: 600)
+            )
+            let scaledDuration = CMTime(seconds: slowMotion.scaledDuration, preferredTimescale: 600)
 
-        if replay {
-            let insertAt = range.duration
-            try video.insertTimeRange(segmentRange, of: sourceVideo, at: insertAt)
-            if let sourceAudio, let audio {
-                try audio.insertTimeRange(segmentRange, of: sourceAudio, at: insertAt)
+            if replay {
+                let insertAt = range.duration
+                try video.insertTimeRange(segmentRange, of: sourceVideo, at: insertAt)
+                if let sourceAudio, let audio {
+                    try audio.insertTimeRange(segmentRange, of: sourceAudio, at: insertAt)
+                }
+                composition.scaleTimeRange(
+                    CMTimeRange(start: insertAt, duration: segmentRange.duration),
+                    toDuration: scaledDuration
+                )
+            } else {
+                // Composition time starts at 0 where the source starts at `range.start`.
+                let segmentStart = CMTime(seconds: slowMotion.start, preferredTimescale: 600) - range.start
+                composition.scaleTimeRange(
+                    CMTimeRange(start: segmentStart, duration: segmentRange.duration),
+                    toDuration: scaledDuration
+                )
             }
-            composition.scaleTimeRange(
-                CMTimeRange(start: insertAt, duration: segmentRange.duration),
-                toDuration: scaledDuration
-            )
-        } else {
-            // Composition time starts at 0 where the source starts at `range.start`.
-            let segmentStart = CMTime(seconds: slowMotion.start, preferredTimescale: 600) - range.start
-            composition.scaleTimeRange(
-                CMTimeRange(start: segmentStart, duration: segmentRange.duration),
-                toDuration: scaledDuration
-            )
         }
-        return composition
+
+        guard let crop else { return (composition, nil) }
+        let (naturalSize, transform, frameRate) = try await sourceVideo.load(.naturalSize, .preferredTransform, .nominalFrameRate)
+        let oriented = CGRect(origin: .zero, size: naturalSize).applying(transform)
+        let renderSize = CGSize(width: oriented.width.rounded(), height: oriented.height.rounded())
+        let upright = transform.concatenating(CGAffineTransform(translationX: -oriented.minX, y: -oriented.minY))
+
+        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
+        layer.setTransform(upright.concatenating(crop.fillTransform(for: renderSize)), at: .zero)
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(start: .zero, duration: try await composition.load(.duration))
+        instruction.layerInstructions = [layer]
+
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = renderSize
+        videoComposition.frameDuration = CMTime(value: 1, timescale: max(1, CMTimeScale(frameRate > 0 ? frameRate.rounded() : 30)))
+        videoComposition.instructions = [instruction]
+        return (composition, videoComposition)
     }
 
     /// HEVC sources stay HEVC; anything else uses the H.264 highest-quality preset.

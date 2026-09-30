@@ -22,7 +22,8 @@ enum ClipEditorMode {
 
 /// Full-screen trim/edit screen for one clip. Drag the yellow handles to
 /// choose a range, optionally add a slow-mo segment (green handles, speed from
-/// the same menu as the player), and play to preview. In export mode, Save
+/// the same menu as the player), pinch the video to zoom in (drag to pan while
+/// zoomed), and play to preview. In export mode, Save
 /// re-encodes and replaces the original or keeps the result as a new clip;
 /// the screen locks while it runs. In configure mode (the montage builder),
 /// Done hands the settings back and nothing is encoded.
@@ -59,6 +60,14 @@ struct ClipEditorScreen: View {
     /// True between hitting `end` and the seek back to the slow-mo start landing.
     @State private var isSeekingSlowMotionReplay = false
     @State private var isSpeedMenuExpanded = false
+    @State private var crop: ClipCrop
+    /// Oriented pixel size of the video, for mapping the pinch onto the frame.
+    /// `nil` until known (older records don't store it).
+    @State private var videoSize: CGSize?
+    /// Gesture values already applied to `crop`, so each change applies only
+    /// its delta. `nil` between gestures.
+    @State private var appliedMagnification: CGFloat?
+    @State private var appliedDrag: CGSize?
     @State private var playhead: Double = 0
     @State private var isPlaying = false
     @State private var isEditing = false
@@ -92,6 +101,10 @@ struct ClipEditorScreen: View {
         _end = State(initialValue: seeded.end)
         _slowMotion = State(initialValue: seeded.slowMotion)
         _isSlowMotionReplay = State(initialValue: seeded.slowMotion != nil && seeded.isSlowMotionReplay)
+        _crop = State(initialValue: seeded.effectiveCrop ?? .identity)
+        _videoSize = State(initialValue: record.videoWidth > 0 && record.videoHeight > 0
+            ? CGSize(width: record.videoWidth, height: record.videoHeight)
+            : nil)
     }
 
     var body: some View {
@@ -101,19 +114,8 @@ struct ClipEditorScreen: View {
             VStack(spacing: 0) {
                 topBar
 
-                ZStack {
-                    PlayerLayerView(player: player)
-                    playPauseButton
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if isSpeedMenuExpanded {
-                        isSpeedMenuExpanded = false
-                    } else {
-                        togglePlayback()
-                    }
-                }
+                preview
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 controls
             }
@@ -272,6 +274,109 @@ struct ClipEditorScreen: View {
         .accessibilityLabel(isPlaying ? "Pause" : "Play selection")
     }
 
+    // MARK: - Zoom
+
+    /// The player, zoomed to `crop` and clipped to the video's frame so the
+    /// preview shows exactly what Save writes. Tap plays; pinch zooms around
+    /// the pinch; drag pans while zoomed.
+    private var preview: some View {
+        GeometryReader { geometry in
+            let fit = Self.aspectFitSize(videoSize, in: geometry.size)
+            ZStack {
+                zoomedPlayer(fitting: fit)
+                playPauseButton
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isSpeedMenuExpanded {
+                    isSpeedMenuExpanded = false
+                } else {
+                    togglePlayback()
+                }
+            }
+            .simultaneousGesture(zoomGesture(container: geometry.size, fit: fit))
+            .accessibilityZoomAction { action in
+                let step = action.direction == .zoomIn ? 1.5 : 1 / 1.5
+                crop = crop.zoomed(to: crop.scale * step, anchorX: 0.5, anchorY: 0.5)
+            }
+        }
+    }
+
+    private func zoomedPlayer(fitting fit: CGSize) -> some View {
+        let scale = crop.clamped().scale
+        let region = crop.unitRect
+        return PlayerLayerView(player: player)
+            .frame(width: fit.width, height: fit.height)
+            .scaleEffect(scale, anchor: .topLeading)
+            .offset(x: -region.minX * fit.width * scale, y: -region.minY * fit.height * scale)
+            .frame(width: fit.width, height: fit.height, alignment: .topLeading)
+            .clipped()
+    }
+
+    /// Pinch and drag together. Each change applies only the delta since the
+    /// last one, and drags are ignored mid-pinch, so lifting one finger of a
+    /// pinch does not make the frame jump.
+    private func zoomGesture(container: CGSize, fit: CGSize) -> some Gesture {
+        SimultaneousGesture(MagnifyGesture(), DragGesture(minimumDistance: 8))
+            .onChanged { value in
+                guard fit.width > 0, fit.height > 0 else { return }
+                if let magnify = value.first {
+                    let previous = appliedMagnification ?? 1
+                    let origin = CGPoint(x: (container.width - fit.width) / 2, y: (container.height - fit.height) / 2)
+                    let anchorX = min(max((magnify.startLocation.x - origin.x) / fit.width, 0), 1)
+                    let anchorY = min(max((magnify.startLocation.y - origin.y) / fit.height, 0), 1)
+                    crop = crop.zoomed(to: crop.scale * magnify.magnification / previous, anchorX: anchorX, anchorY: anchorY)
+                    appliedMagnification = magnify.magnification
+                }
+                if let drag = value.second {
+                    let previous = appliedDrag ?? .zero
+                    if value.first == nil {
+                        crop = crop.panned(
+                            byX: (drag.translation.width - previous.width) / fit.width,
+                            y: (drag.translation.height - previous.height) / fit.height
+                        )
+                    }
+                    appliedDrag = drag.translation
+                }
+            }
+            .onEnded { _ in
+                appliedMagnification = nil
+                appliedDrag = nil
+                if crop.isIdentity {
+                    crop = .identity
+                }
+            }
+    }
+
+    /// Shows the zoom level; tapping returns to the full frame.
+    @ViewBuilder
+    private var zoomResetButton: some View {
+        if isZoomed {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    crop = .identity
+                }
+            } label: {
+                Label(zoomText, systemImage: "arrow.down.right.and.arrow.up.left")
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.yellow)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Zoomed \(zoomText)")
+            .accessibilityHint("Resets to the full frame")
+        }
+    }
+
+    /// Largest `videoSize`-shaped rect inside `container`; the whole container
+    /// when the video size is not known yet.
+    private static func aspectFitSize(_ videoSize: CGSize?, in container: CGSize) -> CGSize {
+        guard let videoSize, videoSize.width > 0, videoSize.height > 0,
+              container.width > 0, container.height > 0 else { return container }
+        let scale = min(container.width / videoSize.width, container.height / videoSize.height)
+        return CGSize(width: videoSize.width * scale, height: videoSize.height * scale)
+    }
+
     private var controls: some View {
         VStack(spacing: 10) {
             HStack {
@@ -334,7 +439,11 @@ struct ClipEditorScreen: View {
         Group {
             if stacksSlowMotionControls {
                 VStack(alignment: .leading, spacing: 12) {
-                    addSlowMotionButton
+                    HStack {
+                        addSlowMotionButton
+                        Spacer(minLength: 0)
+                        zoomResetButton
+                    }
                     if let slowMotion {
                         HStack(spacing: 12) {
                             slowMotionSpeedTrigger(slowMotion)
@@ -360,6 +469,7 @@ struct ClipEditorScreen: View {
                             .fixedSize()
                     }
                     Spacer(minLength: 0)
+                    zoomResetButton
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -369,6 +479,7 @@ struct ClipEditorScreen: View {
         .animation(.easeInOut(duration: 0.15), value: slowMotion == nil)
         .animation(.easeInOut(duration: 0.15), value: isSlowMotionReplay)
         .animation(.easeInOut(duration: 0.15), value: stacksSlowMotionControls)
+        .animation(.easeInOut(duration: 0.15), value: isZoomed)
     }
 
     /// Removing is always allowed so a lapsed subscriber can still clear a segment.
@@ -440,7 +551,7 @@ struct ClipEditorScreen: View {
             ProgressView()
                 .controlSize(.large)
                 .tint(.white)
-            Text(slowMotion == nil ? "Trimming…" : "Encoding slow-mo…")
+            Text(exportingText)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
         }
@@ -451,6 +562,11 @@ struct ClipEditorScreen: View {
     }
 
     // MARK: - Derived
+
+    private var exportingText: String {
+        if slowMotion != nil { return "Encoding slow-mo…" }
+        return isTrimmed ? "Trimming…" : "Encoding zoom…"
+    }
 
     private var selectedDuration: Double { max(end - start, 0) }
 
@@ -469,9 +585,16 @@ struct ClipEditorScreen: View {
         start > 0.01 || end < duration - 0.01
     }
 
-    /// Save is a no-op until a handle has moved or slow-mo has been added.
+    private var isZoomed: Bool { !crop.isIdentity }
+
+    private var zoomText: String {
+        crop.clamped().scale.formatted(.number.precision(.fractionLength(1))) + "×"
+    }
+
+    /// Save is a no-op until a handle has moved, slow-mo has been added, or
+    /// the frame is zoomed.
     private var hasChanges: Bool {
-        isTrimmed || slowMotion != nil
+        isTrimmed || slowMotion != nil || isZoomed
     }
 
     private var isConfiguring: Bool {
@@ -479,13 +602,14 @@ struct ClipEditorScreen: View {
         return false
     }
 
-    /// The trim and slow-mo as they stand, for the configure mode's Done.
+    /// The trim, slow-mo, and zoom as they stand, for the configure mode's Done.
     private var currentEdit: ClipEdit {
         ClipEdit(
             start: start,
             end: end,
             slowMotion: slowMotion,
-            isSlowMotionReplay: slowMotion != nil && isSlowMotionReplay
+            isSlowMotionReplay: slowMotion != nil && isSlowMotionReplay,
+            crop: isZoomed ? crop.clamped() : nil
         )
     }
 
@@ -500,7 +624,7 @@ struct ClipEditorScreen: View {
             ? "Done keeps the edit for the montage; nothing is encoded yet."
             : "Saving re-encodes the clip."
         if slowMotion == nil {
-            return "Drag the handles to trim. \(saveNote)"
+            return "Drag the handles to trim. Pinch the video to zoom. \(saveNote)"
         }
         if isSlowMotionReplay {
             return "The clip plays at full speed, then the green range replays in slow-mo. \(saveNote)"
@@ -519,6 +643,9 @@ struct ClipEditorScreen: View {
             } else {
                 parts.append("\(TrimRangeBar.timeText(slowMotion.duration)) plays at \(SpeedMenu.percentLabel(for: slowMotion.rate)), so the clip runs \(TrimRangeBar.timeText(outputDuration)).")
             }
+        }
+        if isZoomed {
+            parts.append("Zoomed in \(zoomText).")
         }
         parts.append(isTrimmed ? "Replacing removes the rest from this device." : "Replacing overwrites the original on this device.")
         return parts.joined(separator: " ")
@@ -584,6 +711,11 @@ struct ClipEditorScreen: View {
         let url = record.fileURL
         Task {
             frames = await Self.loadFrames(from: url, count: Self.filmstripFrameCount)
+        }
+        if videoSize == nil {
+            Task {
+                videoSize = await Self.loadVideoSize(of: url)
+            }
         }
         Task {
             // `record.duration` came from the export plan; trust the file if it
@@ -767,6 +899,7 @@ struct ClipEditorScreen: View {
                 end: end,
                 slowMotion: slowMotion,
                 replay: isSlowMotionReplay,
+                crop: currentEdit.crop,
                 baseName: baseName
             )
             let outcome: ClipEditOutcome
@@ -846,6 +979,12 @@ struct ClipEditorScreen: View {
             }
         }
         return images
+    }
+
+    nonisolated private static func loadVideoSize(of url: URL) async -> CGSize? {
+        let size = await ClipExporter.orientedSize(of: AVURLAsset(url: url))
+        guard size.width > 0, size.height > 0 else { return nil }
+        return CGSize(width: size.width, height: size.height)
     }
 
     nonisolated private static func loadDuration(of url: URL) async -> Double? {

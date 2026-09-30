@@ -1,8 +1,8 @@
 import Foundation
 
-/// The trim and slow-mo settings for one clip, in source seconds. The editor
-/// produces one of these; `ClipTrimmer` renders one for a single clip and the
-/// montage exporter renders a sequence of them.
+/// The trim, slow-mo, and zoom settings for one clip, in source seconds. The
+/// editor produces one of these; `ClipTrimmer` renders one for a single clip
+/// and the montage exporter renders a sequence of them.
 public struct ClipEdit: Equatable, Sendable, Codable {
     public var start: Double
     public var end: Double
@@ -10,12 +10,21 @@ public struct ClipEdit: Equatable, Sendable, Codable {
     /// With a segment: play the trim at 1×, then replay the segment slow.
     /// Meaningless (and treated as false) without a segment.
     public var isSlowMotionReplay: Bool
+    /// Zoom into part of the frame. `nil` or a 1× crop shows the whole frame.
+    public var crop: ClipCrop?
 
-    public init(start: Double, end: Double, slowMotion: SlowMotionSegment? = nil, isSlowMotionReplay: Bool = false) {
+    public init(
+        start: Double,
+        end: Double,
+        slowMotion: SlowMotionSegment? = nil,
+        isSlowMotionReplay: Bool = false,
+        crop: ClipCrop? = nil
+    ) {
         self.start = start
         self.end = end
         self.slowMotion = slowMotion
         self.isSlowMotionReplay = isSlowMotionReplay
+        self.crop = crop
     }
 
     /// The whole clip, untouched.
@@ -40,9 +49,15 @@ public struct ClipEdit: Equatable, Sendable, Codable {
         start > Self.edgeTolerance || end < clipDuration - Self.edgeTolerance
     }
 
-    /// True once a handle has moved or slow-mo has been added.
+    /// The crop to render, or `nil` when there is no zoom.
+    public var effectiveCrop: ClipCrop? {
+        guard let crop, !crop.isIdentity else { return nil }
+        return crop.clamped()
+    }
+
+    /// True once a handle has moved, slow-mo has been added, or the frame is zoomed.
     public func hasChanges(clipDuration: Double) -> Bool {
-        isTrimmed(clipDuration: clipDuration) || slowMotion != nil
+        isTrimmed(clipDuration: clipDuration) || slowMotion != nil || effectiveCrop != nil
     }
 
     /// Fits the edit into `0...duration`, keeping at least `minimumDuration`
@@ -58,6 +73,7 @@ public struct ClipEdit: Equatable, Sendable, Codable {
         if result.slowMotion == nil {
             result.isSlowMotionReplay = false
         }
+        result.crop = crop?.clamped()
         return result
     }
 }
