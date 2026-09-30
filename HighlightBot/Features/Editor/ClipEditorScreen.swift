@@ -66,6 +66,7 @@ struct ClipEditorScreen: View {
     @State private var showSaveOptions = false
     @State private var isExporting = false
     @State private var statusMessage: String?
+    @State private var showPaywall = false
 
     private static let filmstripFrameCount = 12
 
@@ -171,6 +172,13 @@ struct ClipEditorScreen: View {
             }
         } message: {
             Text(saveMessage)
+        }
+        .sheet(isPresented: $showPaywall, onDismiss: {
+            if slowMotion == nil, container.subscriptions.allows(.slowMotion) {
+                toggleSlowMotion()
+            }
+        }) {
+            PaywallScreen()
         }
         .overlay(alignment: .top) {
             if let statusMessage {
@@ -363,19 +371,36 @@ struct ClipEditorScreen: View {
         .animation(.easeInOut(duration: 0.15), value: stacksSlowMotionControls)
     }
 
+    /// Removing is always allowed so a lapsed subscriber can still clear a segment.
     private var addSlowMotionButton: some View {
-        Button {
-            toggleSlowMotion()
+        let locked = slowMotion == nil && !container.subscriptions.allows(.slowMotion)
+        return Button {
+            if locked {
+                player.pause()
+                showPaywall = true
+            } else {
+                toggleSlowMotion()
+            }
         } label: {
-            Label(
-                slowMotion == nil ? "Add Slow-mo" : "Remove Slow-mo",
-                systemImage: slowMotion == nil ? "plus.circle" : "minus.circle"
-            )
+            HStack(spacing: 6) {
+                Label(
+                    slowMotion == nil ? "Add Slow-mo" : "Remove Slow-mo",
+                    systemImage: slowMotion == nil ? "plus.circle" : "minus.circle"
+                )
+                if locked {
+                    ProBadge()
+                }
+            }
             .font(.footnote.weight(.semibold))
             .foregroundStyle(slowMotion == nil ? Color.white : Color.green)
         }
         .buttonStyle(.plain)
-        .accessibilityHint(slowMotion == nil ? "Inserts a 1 second slow-mo segment halfway through the selection" : "")
+        .accessibilityHint(slowMotionHint(locked: locked))
+    }
+
+    private func slowMotionHint(locked: Bool) -> String {
+        if locked { return "Slow-mo needs Highlight Bot Pro" }
+        return slowMotion == nil ? "Inserts a 1 second slow-mo segment halfway through the selection" : ""
     }
 
     private func slowMotionSpeedTrigger(_ slowMotion: SlowMotionSegment) -> some View {

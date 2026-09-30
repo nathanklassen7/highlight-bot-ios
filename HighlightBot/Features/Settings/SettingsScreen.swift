@@ -10,6 +10,8 @@ struct SettingsScreen: View {
     @State private var usedBytes: Int64 = 0
     @State private var showDeleteAllConfirm = false
     @State private var statusMessage: String?
+    @State private var showPaywall = false
+    @State private var showManageSubscription = false
 
     private static let inactivityMinutes: [Int] = [15, 30, 45, 60, 120]
 
@@ -19,6 +21,8 @@ struct SettingsScreen: View {
 
         NavigationStack {
             Form {
+                proSection
+
                 Section {
                     Picker("Buffer length", selection: $settings.config.bufferSeconds) {
                         ForEach(RecordingConfig.bufferOptions, id: \.self) { seconds in
@@ -126,6 +130,10 @@ struct SettingsScreen: View {
             } message: {
                 Text("Every saved clip is removed from this device. Clips already shared or saved to Photos are not affected.")
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallScreen()
+            }
+            .manageSubscriptionsSheet(isPresented: $showManageSubscription)
             .overlay(alignment: .bottom) {
                 if let statusMessage {
                     Text(statusMessage)
@@ -156,6 +164,34 @@ struct SettingsScreen: View {
                     _ = await container.permissions.requestSpeech()
                 }
             }
+        }
+    }
+
+    // MARK: - Pro
+
+    @ViewBuilder
+    private var proSection: some View {
+        Section {
+            if container.subscriptions.isSubscribed {
+                LabeledContent("Highlight Bot Pro", value: "Active")
+                Button("Manage Subscription") {
+                    showManageSubscription = true
+                }
+            } else {
+                Button {
+                    showPaywall = true
+                } label: {
+                    LabeledContent {
+                        Text("Upgrade")
+                            .foregroundStyle(AppPalette.accent)
+                    } label: {
+                        Text("Highlight Bot Pro")
+                            .foregroundStyle(Color.primary)
+                    }
+                }
+            }
+        } footer: {
+            Text("Pro unlocks montages and slow-mo.")
         }
     }
 

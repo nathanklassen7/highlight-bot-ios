@@ -35,6 +35,7 @@ struct LibraryScreen: View {
     @State private var trimmingRecord: ClipRecord?
     @State private var showBulkTagPicker = false
     @State private var montageRequest: MontageRequest?
+    @State private var showPaywall = false
     @State private var isLandscape = false
 
     private let columns = [GridItem(.adaptive(minimum: 110), spacing: LibraryLayout.gridSpacing)]
@@ -113,6 +114,13 @@ struct LibraryScreen: View {
                 MontageEditorScreen(clips: request.clips) { record in
                     handleMontageSaved(record)
                 }
+            }
+            .sheet(isPresented: $showPaywall, onDismiss: {
+                if container.subscriptions.allows(.montage), canMakeMontage {
+                    montageRequest = MontageRequest(clips: selectedRecords)
+                }
+            }) {
+                PaywallScreen()
             }
             .sheet(item: $editingTagsFor) { record in
                 TagPickerSheet(title: "Edit Tags", initialSelection: record.tags) { tags in
@@ -420,15 +428,32 @@ struct LibraryScreen: View {
     }
 
     private var montageFAB: some View {
-        Button {
-            montageRequest = MontageRequest(clips: selectedRecords)
+        let unlocked = container.subscriptions.allows(.montage)
+        return Button {
+            if unlocked {
+                montageRequest = MontageRequest(clips: selectedRecords)
+            } else {
+                showPaywall = true
+            }
         } label: {
             LibraryActionCircle(systemImage: "scissors", tint: AppPalette.accent, enabled: canMakeMontage)
+                .overlay(alignment: .topTrailing) {
+                    if !unlocked {
+                        ProBadge()
+                            .opacity(canMakeMontage ? 1 : 0.35)
+                            .offset(x: 2, y: -2)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .disabled(!canMakeMontage)
         .accessibilityLabel("Make a montage from selected clips")
-        .accessibilityHint(canMakeMontage ? "" : "Select at least \(MontageDraft.minimumClipCount) clips")
+        .accessibilityHint(montageHint(unlocked: unlocked))
+    }
+
+    private func montageHint(unlocked: Bool) -> String {
+        if !canMakeMontage { return "Select at least \(MontageDraft.minimumClipCount) clips" }
+        return unlocked ? "" : "Montages need Highlight Bot Pro"
     }
 
     private var bulkStarFAB: some View {

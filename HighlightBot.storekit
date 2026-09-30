@@ -1,0 +1,57 @@
+{
+  "identifier" : "5E1C2B7A",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "8F3A61D2",
+      "localizations" : [
+
+      ],
+      "name" : "Highlight Bot Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6A4D9E10",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Montages and slow-mo editing.",
+              "displayName" : "Highlight Bot Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.nathanklassen.highlightbot.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Highlight Bot Pro Monthly",
+          "subscriptionGroupID" : "8F3A61D2",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

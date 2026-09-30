@@ -18,6 +18,12 @@ packages:
   HighlightCore:
     path: HighlightCore
 
+# Local StoreKit Testing config for the Pro subscription. Not part of the app
+# bundle; the scheme below points Run at it so purchases work without App Store
+# Connect. Product IDs must match `SubscriptionStore.productID`.
+fileGroups:
+  - HighlightBot.storekit
+
 # Project-level defaults; the target repeats the ones that matter.
 settings:
   base:
@@ -86,6 +92,24 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
+  # App-hosted tests for code that needs the app target, such as StoreKit
+  # purchases driven by SKTestSession against HighlightBot.storekit.
+  HighlightBotTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: HighlightBotTests
+      - path: HighlightBot.storekit
+        buildPhase: resources
+    dependencies:
+      - target: HighlightBot
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: com.nathanklassen.highlightbot.tests
+
 schemes:
   HighlightBot:
     build:
@@ -96,10 +120,12 @@ schemes:
       # TestFlight build. Switch to Debug in Xcode's scheme editor when you need LLDB.
       config: Release
       debugEnabled: false
+      storeKitConfiguration: HighlightBot.storekit
     test:
       config: Debug
       targets:
         - package: HighlightCore/HighlightCoreTests
+        - HighlightBotTests
     profile:
       config: Release
     analyze:

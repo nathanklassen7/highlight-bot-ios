@@ -64,6 +64,8 @@ final class BackendProxy: RecordingBackend, @unchecked Sendable {
 @Observable
 final class AppContainer {
     let settings: SettingsStore
+    /// Highlight Bot Pro subscription state; gates montage and slow-mo.
+    let subscriptions: SubscriptionStore
     let permissions: PermissionsManager
     let triggerBus: TriggerBus
     let tapTrigger: TapTrigger
@@ -125,6 +127,7 @@ final class AppContainer {
         let settings = SettingsStore()
         let config = settings.config
         self.settings = settings
+        subscriptions = SubscriptionStore()
 
         permissions = PermissionsManager()
 
@@ -180,6 +183,7 @@ final class AppContainer {
         started = true
 
         permissions.refresh()
+        subscriptions.start()
 
         do {
             try await triggerBus.register(tapTrigger)
