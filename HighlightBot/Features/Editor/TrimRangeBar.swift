@@ -9,9 +9,11 @@ import UIKit
 ///
 /// An optional slow-mo segment draws inside the kept range with the same kind
 /// of handles in green. Its edges stay inside `start...end` and at least
-/// `slowMotionMinimumDuration` apart; moving a trim handle past it pushes it
-/// along. Green handles sit above yellow ones, so where the two coincide the
-/// slow-mo edge moves first and uncovers the trim handle.
+/// `slowMotionMinimumDuration` apart. The two ranges push each other: moving
+/// a trim handle past a slow-mo edge carries it along, and dragging a slow-mo
+/// edge past a trim handle widens the trim instead of stopping. Green handles
+/// sit above yellow ones, so where the two coincide the slow-mo edge moves
+/// first and uncovers the trim handle.
 ///
 /// Dragging inside the selected range scrubs the playhead; dragging a handle
 /// moves that edge. `onEditingChanged` brackets both so the owner can pause
@@ -211,11 +213,15 @@ struct TrimRangeBar: View {
             slowMotion = slowMotion?.clamped(to: start, end, minimumDuration: slowMotionMinimumDuration)
         case .slowStart:
             guard var segment = slowMotion else { return }
-            segment.start = min(max(value, start), segment.end - slowMotionMinimumDuration)
+            segment.start = min(max(value, 0), segment.end - slowMotionMinimumDuration)
+            // Past the trim start, drag the trim along rather than stopping.
+            // Widening the trim can't break its minimum duration.
+            start = min(start, segment.start)
             slowMotion = segment
         case .slowEnd:
             guard var segment = slowMotion else { return }
-            segment.end = max(min(value, end), segment.start + slowMotionMinimumDuration)
+            segment.end = max(min(value, duration), segment.start + slowMotionMinimumDuration)
+            end = max(end, segment.end)
             slowMotion = segment
         }
     }

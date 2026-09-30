@@ -74,19 +74,11 @@ struct PaywallScreen: View {
 
     private var hero: some View {
         VStack(spacing: 16) {
-            Image(systemName: "film.stack.fill")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 88, height: 88)
-                .background(
-                    LinearGradient(
-                        colors: [AppPalette.accent, Color(red: 0.45, green: 0.30, blue: 0.95)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                )
-                .shadow(color: AppPalette.accent.opacity(0.6), radius: 24, y: 8)
+            Image("LaunchLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .shadow(color: .black.opacity(0.4), radius: 24, y: 8)
                 .accessibilityHidden(true)
 
             VStack(spacing: 8) {
