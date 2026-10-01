@@ -23,7 +23,9 @@ struct SubscriptionStoreTests {
 
     @Test("Buying Pro unlocks montage and slow-mo")
     func purchaseUnlocks() async throws {
-        let store = SubscriptionStore()
+        let store = SubscriptionStore(defaults: Self.freshDefaults())
+        store.isTestingOverrideEnabled = false
+        #expect(!store.allows(.montage))
         await store.loadProduct()
         let product = try #require(store.product)
 
@@ -34,6 +36,37 @@ struct SubscriptionStoreTests {
         #expect(store.isSubscribed)
         #expect(store.allows(.montage))
         #expect(store.allows(.slowMotion))
+    }
+
+    @Test("The testing override is on by default and unlocks Pro without a purchase")
+    func testingOverrideDefaultsOn() async throws {
+        let store = SubscriptionStore(defaults: Self.freshDefaults())
+        await store.refreshEntitlement()
+
+        #expect(store.isTestingOverrideEnabled)
+        #expect(!store.isSubscribed)
+        #expect(store.allows(.montage))
+        #expect(store.allows(.slowMotion))
+    }
+
+    @Test("Turning the override off persists and locks Pro")
+    func testingOverridePersists() async throws {
+        let defaults = Self.freshDefaults()
+        let store = SubscriptionStore(defaults: defaults)
+        store.isTestingOverrideEnabled = false
+        #expect(!store.allows(.slowMotion))
+
+        let reloaded = SubscriptionStore(defaults: defaults)
+        #expect(!reloaded.isTestingOverrideEnabled)
+        #expect(!reloaded.allows(.slowMotion))
+    }
+
+    /// An empty, throwaway suite so override state can't leak between tests.
+    private static func freshDefaults() -> UserDefaults {
+        let name = "SubscriptionStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
     }
 
     @Test("A fresh store picks up an existing subscription")

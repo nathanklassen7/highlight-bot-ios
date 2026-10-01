@@ -17,6 +17,7 @@ struct SettingsScreen: View {
 
     var body: some View {
         @Bindable var settings = container.settings
+        @Bindable var subscriptions = container.subscriptions
         let isRecording = container.sessionState.isRecording
 
         NavigationStack {
@@ -106,10 +107,19 @@ struct SettingsScreen: View {
                     .disabled(usedBytes == 0)
                 }
 
-                Section("Debug") {
+                Section {
+                    if SubscriptionStore.isTestBuild {
+                        Toggle("Unlock Pro for testing", isOn: $subscriptions.isTestingOverrideEnabled)
+                    }
                     Toggle("Show pipeline metrics", isOn: $settings.config.debugOverlayEnabled)
                     Button("Reset settings to defaults") {
                         settings.reset()
+                    }
+                } header: {
+                    Text("Debug")
+                } footer: {
+                    if SubscriptionStore.isTestBuild {
+                        Text("Grants montages and slow-mo without a subscription. Only available in TestFlight and debug builds; the paywall still works for testing purchases.")
                     }
                 }
 

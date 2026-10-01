@@ -22,13 +22,28 @@ enum SubscriptionError: Error, LocalizedError {
 /// HighlightBot Pro, the app's single auto-renewing subscription.
 ///
 /// Access is read from StoreKit's verified entitlements at launch, on every
-/// return to the foreground, and whenever a transaction arrives. Nothing is
-/// cached in `UserDefaults`, so expiry, refunds, and Family Sharing changes
-/// take effect without extra bookkeeping.
+/// return to the foreground, and whenever a transaction arrives. The
+/// entitlement itself is never cached in `UserDefaults`, so expiry, refunds,
+/// and Family Sharing changes take effect without extra bookkeeping.
+///
+/// Debug and TestFlight builds also honour `isTestingOverrideEnabled`, which
+/// grants Pro without a purchase so testers aren't bound to the sandbox's
+/// accelerated renewal cycle. App Store builds ignore it.
 @MainActor
 @Observable
 final class SubscriptionStore {
     nonisolated static let productID = "com.nathanklassen.highlightbot.pro.monthly"
+    private static let testingOverrideKey = "proTestingOverrideEnabled"
+
+    /// Debug builds and TestFlight installs, which run against a sandbox
+    /// receipt. False for App Store downloads, so the override can't leak.
+    nonisolated static let isTestBuild: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        #endif
+    }()
 
     enum LoadState: Equatable {
         case idle, loading, loaded, failed
@@ -43,8 +58,20 @@ final class SubscriptionStore {
 
     private(set) var product: Product?
     private(set) var loadState: LoadState = .idle
+    /// Whether the App Store reports an active Pro subscription. Does not
+    /// include the testing override; use `allows(_:)` to gate features.
     private(set) var isSubscribed = false
 
+    /// Unlocks Pro features without a purchase. On by default, persisted in
+    /// `UserDefaults`, and only consulted when `isTestBuild` is true.
+    var isTestingOverrideEnabled: Bool {
+        didSet {
+            guard isTestingOverrideEnabled != oldValue else { return }
+            defaults.set(isTestingOverrideEnabled, forKey: Self.testingOverrideKey)
+        }
+    }
+
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
     /// Newest verified Pro transaction this process has been handed directly,
     /// by a purchase or `Transaction.updates`. `currentEntitlements` can lag
@@ -52,8 +79,14 @@ final class SubscriptionStore {
     /// the next launch reads StoreKit afresh.
     @ObservationIgnored private var latestTransaction: Transaction?
 
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        // Absent means never touched: default on.
+        isTestingOverrideEnabled = defaults.object(forKey: Self.testingOverrideKey) as? Bool ?? true
+    }
+
     func allows(_ feature: ProFeature) -> Bool {
-        isSubscribed
+        isSubscribed || (Self.isTestBuild && isTestingOverrideEnabled)
     }
 
     /// Starts listening for transactions and loads the product. Idempotent.
