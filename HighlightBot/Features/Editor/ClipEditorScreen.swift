@@ -63,10 +63,8 @@ struct ClipEditorScreen: View {
     /// Oriented pixel size of the video, for mapping the pinch onto the frame.
     /// `nil` until known (older records don't store it).
     @State private var videoSize: CGSize?
-    /// Gesture values already applied to `crop`, so each change applies only
-    /// its delta. `nil` between gestures.
-    @State private var appliedMagnification: CGFloat?
-    @State private var appliedDrag: CGSize?
+    /// True while a pinch or drag on the preview is changing `crop`.
+    @State private var isAdjustingCrop = false
     @State private var playhead: Double = 0
     @State private var isPlaying = false
     @State private var isEditing = false
@@ -304,8 +302,8 @@ struct ClipEditorScreen: View {
     // MARK: - Zoom
 
     /// The player, zoomed to `crop` and clipped to the video's frame so the
-    /// preview shows exactly what Save writes. Tap plays; pinch zooms around
-    /// the pinch; drag pans while zoomed.
+    /// preview shows exactly what Save writes. Tap plays; pinch zooms and pans
+    /// around the fingers; one-finger drag pans while zoomed.
     private var preview: some View {
         GeometryReader { geometry in
             let fit = Self.aspectFitSize(videoSize, in: geometry.size)
@@ -321,6 +319,28 @@ struct ClipEditorScreen: View {
                     }
                     .animation(.easeInOut(duration: 0.15), value: isZoomed)
                     .animation(.easeInOut(duration: 0.15), value: isAdjustingCrop)
+                CropGestureBridge(
+                    crop: crop,
+                    fitSize: fit,
+                    onCropChange: { crop = $0 },
+                    onAdjustingChange: { adjusting in
+                        isAdjustingCrop = adjusting
+                        if !adjusting, crop.isIdentity {
+                            crop = .identity
+                        }
+                    },
+                    onTap: {
+                        if isSpeedMenuExpanded {
+                            isSpeedMenuExpanded = false
+                        } else {
+                            togglePlayback()
+                        }
+                    }
+                )
+                .accessibilityHidden(true)
+                Color.clear
+                    .frame(width: fit.width, height: fit.height)
+                    .allowsHitTesting(false)
                     .overlay(alignment: .topTrailing) {
                         zoomResetButton
                             .padding(8)
@@ -331,15 +351,6 @@ struct ClipEditorScreen: View {
                     .animation(.easeInOut(duration: 0.15), value: isAdjustingCrop)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if isSpeedMenuExpanded {
-                    isSpeedMenuExpanded = false
-                } else {
-                    togglePlayback()
-                }
-            }
-            .simultaneousGesture(zoomGesture(container: geometry.size, fit: fit))
             .accessibilityZoomAction { action in
                 let step = action.direction == .zoomIn ? 1.5 : 1 / 1.5
                 crop = crop.zoomed(to: crop.scale * step, anchorX: 0.5, anchorY: 0.5)
@@ -356,41 +367,6 @@ struct ClipEditorScreen: View {
             .offset(x: -region.minX * fit.width * scale, y: -region.minY * fit.height * scale)
             .frame(width: fit.width, height: fit.height, alignment: .topLeading)
             .clipped()
-    }
-
-    /// Pinch and drag together. Each change applies only the delta since the
-    /// last one, and drags are ignored mid-pinch, so lifting one finger of a
-    /// pinch does not make the frame jump.
-    private func zoomGesture(container: CGSize, fit: CGSize) -> some Gesture {
-        SimultaneousGesture(MagnifyGesture(), DragGesture(minimumDistance: 8))
-            .onChanged { value in
-                guard fit.width > 0, fit.height > 0 else { return }
-                if let magnify = value.first {
-                    let previous = appliedMagnification ?? 1
-                    let origin = CGPoint(x: (container.width - fit.width) / 2, y: (container.height - fit.height) / 2)
-                    let anchorX = min(max((magnify.startLocation.x - origin.x) / fit.width, 0), 1)
-                    let anchorY = min(max((magnify.startLocation.y - origin.y) / fit.height, 0), 1)
-                    crop = crop.zoomed(to: crop.scale * magnify.magnification / previous, anchorX: anchorX, anchorY: anchorY)
-                    appliedMagnification = magnify.magnification
-                }
-                if let drag = value.second {
-                    let previous = appliedDrag ?? .zero
-                    if value.first == nil {
-                        crop = crop.panned(
-                            byX: (drag.translation.width - previous.width) / fit.width,
-                            y: (drag.translation.height - previous.height) / fit.height
-                        )
-                    }
-                    appliedDrag = drag.translation
-                }
-            }
-            .onEnded { _ in
-                appliedMagnification = nil
-                appliedDrag = nil
-                if crop.isIdentity {
-                    crop = .identity
-                }
-            }
     }
 
     /// Pill in the preview's corner showing the zoom level; tapping returns
@@ -754,8 +730,6 @@ struct ClipEditorScreen: View {
     }
 
     private var isZoomed: Bool { !crop.isIdentity }
-    private var isAdjustingCrop: Bool { appliedMagnification != nil || appliedDrag != nil }
-
     private var zoomText: String {
         crop.clamped().scale.formatted(.number.precision(.fractionLength(1))) + "×"
     }

@@ -68,13 +68,21 @@ public struct ClipCrop: Equatable, Sendable, Codable {
     /// Zooms to `newScale`, keeping the content under the anchor (a fraction
     /// of the visible region, as a pinch location on screen) in place.
     public func zoomed(to newScale: Double, anchorX: Double, anchorY: Double) -> ClipCrop {
+        pinched(to: newScale, fromX: anchorX, fromY: anchorY, toX: anchorX, toY: anchorY)
+    }
+
+    /// Zooms to `newScale` and moves the content that was under `from` to
+    /// sit under `to`, as a two-finger pinch that also drifts. Points are
+    /// fractions of the visible region, as touch locations on screen, and may
+    /// fall outside it.
+    public func pinched(to newScale: Double, fromX: Double, fromY: Double, toX: Double, toY: Double) -> ClipCrop {
         let current = unitRect
-        let contentX = current.minX + anchorX * current.width
-        let contentY = current.minY + anchorY * current.height
+        let contentX = current.minX + fromX * current.width
+        let contentY = current.minY + fromY * current.height
         let scale = min(max(newScale, Self.minimumScale), Self.maximumScale)
         let side = 1 / scale
-        let minX = contentX - anchorX * side
-        let minY = contentY - anchorY * side
+        let minX = contentX - toX * side
+        let minY = contentY - toY * side
         return ClipCrop(scale: scale, centerX: minX + side / 2, centerY: minY + side / 2).clamped()
     }
 

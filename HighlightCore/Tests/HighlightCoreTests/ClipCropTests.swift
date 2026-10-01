@@ -78,6 +78,36 @@ struct ClipCropTests {
         #expect(approx(rect.minY, 0))
     }
 
+    @Test("pinched moves the content under the start point to the end point")
+    func pinchAndPan() {
+        let start = ClipCrop(scale: 2, centerX: 0.5, centerY: 0.5)
+        let before = start.unitRect
+        let contentX = before.minX + 0.4 * before.width
+        let contentY = before.minY + 0.6 * before.height
+
+        let pinched = start.pinched(to: 3, fromX: 0.4, fromY: 0.6, toX: 0.5, toY: 0.5)
+        #expect(pinched.scale == 3)
+        let after = pinched.unitRect
+        #expect(approx(after.minX + 0.5 * after.width, contentX))
+        #expect(approx(after.minY + 0.5 * after.height, contentY))
+    }
+
+    @Test("pinched at the same scale matches panned")
+    func pinchedAsPan() {
+        let crop = ClipCrop(scale: 2, centerX: 0.5, centerY: 0.5)
+        let pinched = crop.pinched(to: 2, fromX: 0.2, fromY: 0.5, toX: 0.4, toY: 0.3)
+        let panned = crop.panned(byX: 0.2, y: -0.2)
+        #expect(approx(pinched.centerX, panned.centerX))
+        #expect(approx(pinched.centerY, panned.centerY))
+    }
+
+    @Test("pinched clamps the region back inside the frame")
+    func pinchedAtEdge() {
+        let pinched = ClipCrop(scale: 2, centerX: 0.5, centerY: 0.5)
+            .pinched(to: 2, fromX: 0.5, fromY: 0.5, toX: 5, toY: -5)
+        #expect(approx(pinched.unitRect, CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5)))
+    }
+
     @Test("panned moves the region against the drag, in view fractions")
     func pan() {
         let crop = ClipCrop(scale: 2, centerX: 0.5, centerY: 0.5)
