@@ -311,12 +311,24 @@ struct ClipEditorScreen: View {
             let fit = Self.aspectFitSize(videoSize, in: geometry.size)
             ZStack {
                 zoomedPlayer(fitting: fit)
+                    .overlay {
+                        if isZoomed || isAdjustingCrop {
+                            CropCueOverlay(showsThirds: isAdjustingCrop)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.15), value: isZoomed)
+                    .animation(.easeInOut(duration: 0.15), value: isAdjustingCrop)
                     .overlay(alignment: .topTrailing) {
                         zoomResetButton
                             .padding(8)
                             .animation(.easeInOut(duration: 0.15), value: isZoomed)
                     }
                 playPauseButton
+                    .opacity(isAdjustingCrop ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.15), value: isAdjustingCrop)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .contentShape(Rectangle())
@@ -742,6 +754,7 @@ struct ClipEditorScreen: View {
     }
 
     private var isZoomed: Bool { !crop.isIdentity }
+    private var isAdjustingCrop: Bool { appliedMagnification != nil || appliedDrag != nil }
 
     private var zoomText: String {
         crop.clamped().scale.formatted(.number.precision(.fractionLength(1))) + "×"
@@ -1128,5 +1141,74 @@ struct ClipEditorScreen: View {
         guard let time = try? await AVURLAsset(url: url).load(.duration), time.isNumeric else { return nil }
         let seconds = time.seconds
         return seconds.isFinite && seconds > 0 ? seconds : nil
+    }
+}
+
+/// Photos-style crop frame: a hairline border with thick corner brackets and
+/// short ticks at the midpoint of each edge, plus rule-of-thirds lines while
+/// the crop is being adjusted.
+private struct CropCueOverlay: View {
+    var showsThirds = false
+
+    var body: some View {
+        ZStack {
+            if showsThirds {
+                CropThirdsLines()
+                    .stroke(Color.white.opacity(0.6), lineWidth: 0.5)
+                    .transition(.opacity)
+            }
+            Rectangle()
+                .strokeBorder(Color.yellow, lineWidth: 1)
+            CropCueMarks()
+                .stroke(Color.yellow, style: StrokeStyle(lineWidth: 3, lineCap: .square))
+                .padding(1.5)
+        }
+    }
+}
+
+private struct CropThirdsLines: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for fraction in [1.0 / 3, 2.0 / 3] {
+            let x = rect.minX + rect.width * fraction
+            let y = rect.minY + rect.height * fraction
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+        }
+        return path
+    }
+}
+
+private struct CropCueMarks: Shape {
+    var cornerLength: CGFloat = 18
+    var edgeLength: CGFloat = 16
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let corner = min(cornerLength, rect.width / 4, rect.height / 4)
+        let edge = min(edgeLength, rect.width / 4, rect.height / 4)
+
+        for (point, dx, dy) in [
+            (CGPoint(x: rect.minX, y: rect.minY), 1.0, 1.0),
+            (CGPoint(x: rect.maxX, y: rect.minY), -1.0, 1.0),
+            (CGPoint(x: rect.minX, y: rect.maxY), 1.0, -1.0),
+            (CGPoint(x: rect.maxX, y: rect.maxY), -1.0, -1.0),
+        ] {
+            path.move(to: CGPoint(x: point.x + dx * corner, y: point.y))
+            path.addLine(to: point)
+            path.addLine(to: CGPoint(x: point.x, y: point.y + dy * corner))
+        }
+
+        path.move(to: CGPoint(x: rect.midX - edge / 2, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX + edge / 2, y: rect.minY))
+        path.move(to: CGPoint(x: rect.midX - edge / 2, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.midX + edge / 2, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY - edge / 2))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY + edge / 2))
+        path.move(to: CGPoint(x: rect.maxX, y: rect.midY - edge / 2))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY + edge / 2))
+        return path
     }
 }
