@@ -4,6 +4,8 @@ Native iOS app that records continuously into a rolling buffer and, on a trigger
 
 Plan: [docs/ios-app-plan.md](docs/ios-app-plan.md). Interface contracts between modules: [docs/api-contracts.md](docs/api-contracts.md).
 
+> Cloud agent smoke check: this README was edited to verify workspace setup for Cursor Cloud Agents.
+
 ## Requirements
 
 - Xcode 26 or later (Swift 6 language mode, strict concurrency).
