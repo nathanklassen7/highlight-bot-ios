@@ -38,27 +38,28 @@ struct SubscriptionStoreTests {
         #expect(store.allows(.slowMotion))
     }
 
-    @Test("The testing override is on by default and unlocks Pro without a purchase")
-    func testingOverrideDefaultsOn() async throws {
+    @Test("The testing override is off by default, so Pro stays locked without a purchase")
+    func testingOverrideDefaultsOff() async throws {
         let store = SubscriptionStore(defaults: Self.freshDefaults())
         await store.refreshEntitlement()
 
-        #expect(store.isTestingOverrideEnabled)
+        #expect(!store.isTestingOverrideEnabled)
         #expect(!store.isSubscribed)
-        #expect(store.allows(.montage))
-        #expect(store.allows(.slowMotion))
+        #expect(!store.allows(.montage))
+        #expect(!store.allows(.slowMotion))
     }
 
-    @Test("Turning the override off persists and locks Pro")
+    @Test("Turning the override on unlocks Pro without a purchase and persists")
     func testingOverridePersists() async throws {
         let defaults = Self.freshDefaults()
         let store = SubscriptionStore(defaults: defaults)
-        store.isTestingOverrideEnabled = false
-        #expect(!store.allows(.slowMotion))
+        store.isTestingOverrideEnabled = true
+        #expect(store.allows(.slowMotion))
 
         let reloaded = SubscriptionStore(defaults: defaults)
-        #expect(!reloaded.isTestingOverrideEnabled)
-        #expect(!reloaded.allows(.slowMotion))
+        #expect(reloaded.isTestingOverrideEnabled)
+        #expect(reloaded.allows(.slowMotion))
+        #expect(!reloaded.isSubscribed)
     }
 
     /// An empty, throwaway suite so override state can't leak between tests.

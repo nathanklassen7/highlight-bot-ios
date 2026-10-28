@@ -27,7 +27,9 @@ enum SubscriptionError: Error, LocalizedError {
 ///
 /// Debug and TestFlight builds also honour `isTestingOverrideEnabled`, which
 /// grants Pro without a purchase so testers aren't bound to the sandbox's
-/// accelerated renewal cycle. App Store builds ignore it.
+/// accelerated renewal cycle. It is off until a tester turns it on, so App
+/// Review (which also runs against a sandbox receipt) sees the real paywall.
+/// App Store builds ignore it.
 @MainActor
 @Observable
 final class SubscriptionStore {
@@ -61,7 +63,7 @@ final class SubscriptionStore {
     /// include the testing override; use `allows(_:)` to gate features.
     private(set) var isSubscribed = false
 
-    /// Unlocks Pro features without a purchase. On by default, persisted in
+    /// Unlocks Pro features without a purchase. Off by default, persisted in
     /// `UserDefaults`, and only consulted when `isTestBuild` is true.
     var isTestingOverrideEnabled: Bool {
         didSet {
@@ -80,8 +82,7 @@ final class SubscriptionStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // Absent means never touched: default on.
-        isTestingOverrideEnabled = defaults.object(forKey: Self.testingOverrideKey) as? Bool ?? true
+        isTestingOverrideEnabled = defaults.bool(forKey: Self.testingOverrideKey)
     }
 
     func allows(_ feature: ProFeature) -> Bool {
