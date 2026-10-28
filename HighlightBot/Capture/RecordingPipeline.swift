@@ -161,7 +161,11 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // Apply capture-format changes to the live viewfinder right away when
         // we are not recording; while recording they wait for the next start.
         if previewing && !recording {
-            try? await startPreview()
+            do {
+                try await startPreview()
+            } catch {
+                Log.session.error("Reconfiguring preview failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -238,6 +242,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let config = state.withLock { $0.config }
         let freeBytes = StorageMonitor.freeBytes(at: AppDirectories.ring)
         guard freeBytes >= config.minimumFreeBytes else {
+            Log.session.error("Refusing to record: \(freeBytes) bytes free < \(config.minimumFreeBytes) required")
             throw PipelineError.lowStorage(freeBytes: freeBytes)
         }
         if state.withLock({ $0.isRecording }) {
@@ -300,7 +305,11 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // preview stuck sideways with nothing to unstick it.
         source.setRotationFrozen(false)
         await recorder?.stop()
-        try? await ring.clear()
+        do {
+            try await ring.clear()
+        } catch {
+            Log.ring.error("ring.clear failed: \(error.localizedDescription, privacy: .public)")
+        }
         // Back to the idle rate; the viewfinder does not need 60 fps.
         if state.withLock({ $0.isSourceRunning }) {
             await applyFrameRatePolicy()
@@ -380,9 +389,13 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let received = DispatchTime.now().uptimeNanoseconds
         let ring = self.ring
         Task(priority: .utility) { [weak self] in
-            guard (try? await ring.append(segment)) != nil else { return }
-            let millis = Double(DispatchTime.now().uptimeNanoseconds - received) / 1_000_000
-            self?.state.withLock { $0.lastRingWriteMillis = millis }
+            do {
+                _ = try await ring.append(segment)
+                let millis = Double(DispatchTime.now().uptimeNanoseconds - received) / 1_000_000
+                self?.state.withLock { $0.lastRingWriteMillis = millis }
+            } catch {
+                Log.ring.error("ring.append failed for seq \(segment.seq): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -422,6 +435,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             guard isRecording else { return }
             await coordinator.captureDidResume()
         case .runtimeError(let message):
+            Log.session.error("Capture failed: \(message, privacy: .public)")
             state.withLock { $0.isSourceRunning = false }
             stopMetricsTask()
             guard isRecording else { return }

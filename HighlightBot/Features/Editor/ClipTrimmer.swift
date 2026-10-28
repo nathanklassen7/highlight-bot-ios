@@ -139,7 +139,11 @@ final class ClipTrimmer: Sendable {
     static func discard(_ exported: ExportedClip) {
         let fm = FileManager.default
         for url in [exported.fileURL, exported.thumbnailURL].compactMap({ $0 }) where fm.fileExists(atPath: url.path) {
-            try? fm.removeItem(at: url)
+            do {
+                try fm.removeItem(at: url)
+            } catch {
+                Log.export.error("Failed to discard \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

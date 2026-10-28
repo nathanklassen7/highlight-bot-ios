@@ -40,6 +40,7 @@
 		89B8CD7D19DBD999797D39F0 /* AppDirectories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B70E71D459FA79466779634 /* AppDirectories.swift */; };
 		8C4EF4BFFFA49853ADCD43F7 /* CaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE669F0DA2DF1EAE5E54AF5F /* CaptureSource.swift */; };
 		8E024044B16993A1028AB37A /* PhotosSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D86C565B7283A4733D16DE /* PhotosSaver.swift */; };
+		8E5357D04E9F07130096E969 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3C44C696CAAD0D675271F2 /* Log.swift */; };
 		93032DEB4BF764DD62AA0647 /* TagPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A3901CB662F572B1188679 /* TagPreferences.swift */; };
 		94A498A3BF08FE5CBF38C98C /* ClipPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC536E2769119B72A079A01 /* ClipPlayerScreen.swift */; };
 		9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3D90F953BC7347B56BCA8 /* LibraryScreen.swift */; };
@@ -105,6 +106,7 @@
 		6294A5C9A65CAC5A8EE46795 /* ThermalMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalMonitor.swift; sourceTree = "<group>"; };
 		6436EEF02F4EA492BFB30A2B /* RecordScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordScreen.swift; sourceTree = "<group>"; };
 		66CACB9A3061611B672096EE /* ClipTrimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipTrimmer.swift; sourceTree = "<group>"; };
+		6D3C44C696CAAD0D675271F2 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		7931749DB0B8C2020D00170C /* VoiceTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTrigger.swift; sourceTree = "<group>"; };
 		7A1CC6D802EC7FC51748B9BC /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		7CAD40D813E106259E034E9B /* clip-saved.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "clip-saved.wav"; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 			children = (
 				5B70E71D459FA79466779634 /* AppDirectories.swift */,
 				F2E588E111BA494E50081E17 /* CPUUsageSampler.swift */,
+				6D3C44C696CAAD0D675271F2 /* Log.swift */,
 				AEA49A4BA94CF37EF4806662 /* PermissionsManager.swift */,
 				DB14BDF939CC747BC6B68662 /* PowerModeMonitor.swift */,
 				3CD206CE29D50125C15E690A /* ScreenBrightness.swift */,
@@ -488,6 +491,7 @@
 				3AEF9345FB2E9635F1B25D30 /* HighlightBotApp.swift in Sources */,
 				A6C99E82305EFA469FCC1964 /* LibraryDragSelect.swift in Sources */,
 				9735A0D12EED09E0924A0182 /* LibraryScreen.swift in Sources */,
+				8E5357D04E9F07130096E969 /* Log.swift in Sources */,
 				02AEF2AE6D54B19660A14D13 /* MontageComposition.swift in Sources */,
 				981B6B6B3250A98F8D9B2D75 /* MontageEditorScreen.swift in Sources */,
 				612C5F45D7DB15F75D5D047C /* MontageExporter.swift in Sources */,

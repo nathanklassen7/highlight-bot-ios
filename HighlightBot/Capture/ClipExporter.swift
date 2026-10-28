@@ -246,6 +246,7 @@ final class ClipExporter: Sendable {
         do {
             let result = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600))
             guard let data = UIImage(cgImage: result.image).jpegData(compressionQuality: 0.8) else {
+                Log.export.error("Thumbnail JPEG encoding returned nil for \(baseName, privacy: .public)")
                 return nil
             }
             let directory = clipsDirectory.appending(path: "Thumbnails", directoryHint: .isDirectory)
@@ -254,24 +255,27 @@ final class ClipExporter: Sendable {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
+            Log.export.error("Thumbnail failed for \(baseName, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
 
     /// Pixel size of the first video track after its `preferredTransform`, so a
-    /// portrait 1080p clip reads 1080×1920. Returns `(0, 0)` rather
+    /// portrait 1080p clip reads 1080×1920. Returns `(0, 0)` and logs rather
     /// than throwing: a missing size must never fail an export, and
     /// `ClipOrientation` treats it as landscape. Shared with `ClipTrimmer` and
     /// `MontageExporter`.
     static func orientedSize(of asset: AVAsset) async -> (width: Int, height: Int) {
         do {
             guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+                Log.export.error("Oriented size: no video track")
                 return (0, 0)
             }
             let (naturalSize, transform) = try await track.load(.naturalSize, .preferredTransform)
             let oriented = naturalSize.applying(transform)
             return (Int(abs(oriented.width).rounded()), Int(abs(oriented.height).rounded()))
         } catch {
+            Log.export.error("Oriented size failed: \(error.localizedDescription, privacy: .public)")
             return (0, 0)
         }
     }

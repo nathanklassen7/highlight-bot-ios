@@ -134,10 +134,18 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
     private func startRequestIfWanted() {
         guard lock.withLock({ wantsListening }) else { return }
 
-        guard let recognizer,
-              SFSpeechRecognizer.authorizationStatus() == .authorized,
-              recognizer.supportsOnDeviceRecognition
-        else { return }
+        guard let recognizer else {
+            Log.voice.error("No speech recognizer for \(Self.locale.identifier, privacy: .public); voice trigger disabled")
+            return
+        }
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
+            Log.voice.error("Speech recognition not authorized; voice trigger idle")
+            return
+        }
+        guard recognizer.supportsOnDeviceRecognition else {
+            Log.voice.error("On-device recognition unsupported for \(Self.locale.identifier, privacy: .public); voice trigger idle")
+            return
+        }
         guard recognizer.isAvailable else {
             scheduleStart(after: unavailableRetryDelay)
             return

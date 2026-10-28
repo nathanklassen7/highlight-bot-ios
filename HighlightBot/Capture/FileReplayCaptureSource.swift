@@ -94,6 +94,7 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     func start() async throws {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             let error = ReplayError.fileNotFound(fileURL)
+            Log.capture.error("\(error.localizedDescription, privacy: .public)")
             emit(.runtimeError(error.localizedDescription))
             throw error
         }
@@ -215,8 +216,10 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
         // same kind of monotonically increasing PTS the camera would produce.
         let base = CMClockGetTime(hostClock)
         var loopOffset = CMTime.zero
+        var pass = 0
 
         repeat {
+            pass += 1
             var passEnd = CMTime.zero
             do {
                 try runPass(asset: asset,
@@ -226,6 +229,7 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
                             hostClock: hostClock,
                             passEnd: &passEnd)
             } catch {
+                Log.capture.error("Replay pass \(pass) failed: \(error.localizedDescription, privacy: .public)")
                 emit(.runtimeError(error.localizedDescription))
                 break
             }

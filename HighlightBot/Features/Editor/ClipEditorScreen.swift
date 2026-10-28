@@ -1062,6 +1062,7 @@ struct ClipEditorScreen: View {
             onComplete(outcome)
             dismiss()
         } catch {
+            Log.ui.error("Edit failed: \(String(describing: error), privacy: .public)")
             Haptics.error()
             statusMessage = "Save failed: \(error.localizedDescription)"
         }

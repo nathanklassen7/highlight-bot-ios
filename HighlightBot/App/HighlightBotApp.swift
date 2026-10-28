@@ -54,7 +54,9 @@ enum InterfaceOrientationLock {
         for scene in scenes {
             scene.windows.forEach { $0.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations() }
             if let forced {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: forced))
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: forced)) { error in
+                    Log.ui.error("Failed to update interface orientation: \(error.localizedDescription)")
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ final class StorageMonitor: Sendable {
             let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             return values.volumeAvailableCapacityForImportantUsage ?? 0
         } catch {
+            Log.ui.error("freeBytes failed for \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return 0
         }
     }

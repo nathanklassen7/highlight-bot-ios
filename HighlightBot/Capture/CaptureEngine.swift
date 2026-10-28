@@ -218,6 +218,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     try self.configureOnQueue(config)
                     continuation.resume()
                 } catch {
+                    Log.capture.error("configure failed: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -237,6 +238,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     self.emit(.started)
                     continuation.resume()
                 } catch {
+                    Log.capture.error("start failed: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -273,7 +275,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
                     self.emit(.formatChanged(width: Int(dims.width), height: Int(dims.height), frameRate: fps))
                 } catch {
-                    // Leave the current rate in place.
+                    Log.capture.error("setFrameRate lockForConfiguration failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -376,17 +378,25 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             }
         }
 
-        if config.needsMicrophone, let mic = AVCaptureDevice.default(for: .audio) {
-            let micInput = try AVCaptureDeviceInput(device: mic)
-            if session.canAddInput(micInput) {
-                session.addInput(micInput)
-                audioDeviceInput = micInput
-                let audio = AVCaptureAudioDataOutput()
-                audio.setSampleBufferDelegate(forwarder, queue: queue)
-                if session.canAddOutput(audio) {
-                    session.addOutput(audio)
-                    audioOutput = audio
+        if config.needsMicrophone {
+            if let mic = AVCaptureDevice.default(for: .audio) {
+                let micInput = try AVCaptureDeviceInput(device: mic)
+                if session.canAddInput(micInput) {
+                    session.addInput(micInput)
+                    audioDeviceInput = micInput
+                    let audio = AVCaptureAudioDataOutput()
+                    audio.setSampleBufferDelegate(forwarder, queue: queue)
+                    if session.canAddOutput(audio) {
+                        session.addOutput(audio)
+                        audioOutput = audio
+                    } else {
+                        Log.capture.error("Cannot add audio data output; recording video only")
+                    }
+                } else {
+                    Log.capture.error("Cannot add microphone input; recording video only")
                 }
+            } else {
+                Log.capture.error("No microphone available; recording video only")
             }
         }
 
@@ -432,6 +442,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         observers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] notification in
             let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError
             let message = error?.localizedDescription ?? "unknown runtime error"
+            Log.capture.error("Capture runtime error: \(message, privacy: .public)")
             guard let self else { return }
             if error?.code == .mediaServicesWereReset {
                 self.recoverFromMediaServicesReset()

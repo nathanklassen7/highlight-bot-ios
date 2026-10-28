@@ -25,6 +25,7 @@ enum PhotosSaver {
         do {
             try await Self.addVideo(at: fileURL)
         } catch {
+            Log.ui.error("Save to Photos failed: \(String(describing: error))")
             throw PhotosSaveError.underlying(error.localizedDescription)
         }
     }

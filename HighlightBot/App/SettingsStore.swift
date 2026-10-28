@@ -46,15 +46,23 @@ final class SettingsStore {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(config) else { return }
-        defaults.set(data, forKey: Self.key)
+        do {
+            let data = try JSONEncoder().encode(config)
+            defaults.set(data, forKey: Self.key)
+        } catch {
+            Log.ui.error("Failed to persist recording config: \(String(describing: error))")
+        }
     }
 
     private static func load(from defaults: UserDefaults) -> RecordingConfig? {
-        guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(RecordingConfig.self, from: data)
-        else { return nil }
-        // Ignore persisted configs that no longer validate (e.g. after a schema change).
-        return decoded.validate().isEmpty ? decoded.resolved() : nil
+        guard let data = defaults.data(forKey: key) else { return nil }
+        do {
+            let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
+            // Ignore persisted configs that no longer validate (e.g. after a schema change).
+            return decoded.validate().isEmpty ? decoded.resolved() : nil
+        } catch {
+            Log.ui.error("Failed to decode persisted recording config; using defaults: \(String(describing: error))")
+            return nil
+        }
     }
 }
