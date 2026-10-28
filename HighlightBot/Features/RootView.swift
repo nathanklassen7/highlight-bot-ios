@@ -171,7 +171,7 @@ enum ScreenMetrics {
 /// Public web pages the app links to. Repointing the site is a one-line change
 /// to `site`; App Store Connect's Privacy Policy and Support URLs must match.
 enum AppLinks {
-    static let site = URL(string: "https://highlightbot.natehub.ca")!
+    static let site = URL(string: "https://highlightbot.live")!
     static let privacyPolicy = site.appending(path: "privacy/")
     static let support = site.appending(path: "support/")
     /// Apple's standard EULA, which the site's terms page says applies.
