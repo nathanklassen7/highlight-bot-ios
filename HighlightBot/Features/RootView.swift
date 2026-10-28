@@ -168,6 +168,16 @@ enum ScreenMetrics {
     static let top: CGFloat = 60
 }
 
+/// Public web pages the app links to. Repointing the site is a one-line change
+/// to `site`; App Store Connect's Privacy Policy and Support URLs must match.
+enum AppLinks {
+    static let site = URL(string: "https://highlightbot.natehub.ca")!
+    static let privacyPolicy = site.appending(path: "privacy/")
+    static let support = site.appending(path: "support/")
+    /// Apple's standard EULA, which the site's terms page says applies.
+    static let termsOfUse = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+}
+
 /// App-wide semantic colors. Adopt in new UI; existing screens can migrate later.
 enum AppPalette {
     static let accent = Color(red: 0.20, green: 0.48, blue: 0.96)

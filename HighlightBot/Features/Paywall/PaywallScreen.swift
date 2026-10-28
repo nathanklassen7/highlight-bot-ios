@@ -13,12 +13,6 @@ struct PaywallScreen: View {
     @State private var isRestoring = false
     @State private var message: String?
 
-    private enum Links {
-        static let termsOfUse = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
-        /// App Review requires a privacy policy link on subscription screens.
-        static let privacyPolicy: URL? = nil
-    }
-
     var body: some View {
         let store = container.subscriptions
         ZStack {
@@ -140,10 +134,8 @@ struct PaywallScreen: View {
                     Task { await restore(store) }
                 }
                 .disabled(isRestoring || isPurchasing)
-                Link("Terms of Use", destination: Links.termsOfUse)
-                if let privacyPolicy = Links.privacyPolicy {
-                    Link("Privacy Policy", destination: privacyPolicy)
-                }
+                Link("Terms of Use", destination: AppLinks.termsOfUse)
+                Link("Privacy Policy", destination: AppLinks.privacyPolicy)
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white.opacity(0.7))

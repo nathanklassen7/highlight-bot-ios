@@ -126,6 +126,9 @@ struct SettingsScreen: View {
                 Section("About") {
                     LabeledContent("Version", value: Self.versionText)
                     LabeledContent("Minimum iOS", value: "17.2")
+                    Link("Privacy Policy", destination: AppLinks.privacyPolicy)
+                    Link("Terms of Use", destination: AppLinks.termsOfUse)
+                    Link("Support", destination: AppLinks.support)
                 }
             }
             // Form manages its own horizontal insets; only clear the tab pill.
