@@ -25,22 +25,25 @@ enum SubscriptionError: Error, LocalizedError {
 /// entitlement itself is never cached in `UserDefaults`, so expiry, refunds,
 /// and Family Sharing changes take effect without extra bookkeeping.
 ///
-/// Debug and TestFlight builds also honour `isTestingOverrideEnabled`, which
-/// grants Pro without a purchase so testers aren't bound to the sandbox's
-/// accelerated renewal cycle. App Store builds ignore it.
+/// Debug and Beta builds (see `isTestBuild`) also honour
+/// `isTestingOverrideEnabled`, which grants Pro without a purchase so testers
+/// aren't bound to the sandbox's accelerated renewal cycle. Production builds
+/// ignore it: `isTestBuild` is a compile-time constant false there.
 @MainActor
 @Observable
 final class SubscriptionStore {
     nonisolated static let productID = "com.nathanklassen.highlightbot.pro.monthly"
     private static let testingOverrideKey = "proTestingOverrideEnabled"
 
-    /// Debug builds and TestFlight installs, which run against a sandbox
-    /// receipt. False for App Store downloads, so the override can't leak.
+    /// True for Debug builds and for Release builds archived with
+    /// `BETA_FLAG=BETA` (the TestFlight build). Decided at compile time, not
+    /// from the receipt: App Review also runs against a sandbox receipt, and
+    /// the submitted build must not contain any developer controls.
     nonisolated static let isTestBuild: Bool = {
-        #if DEBUG
+        #if DEBUG || BETA
         return true
         #else
-        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        return false
         #endif
     }()
 

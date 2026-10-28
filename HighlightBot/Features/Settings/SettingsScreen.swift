@@ -2,7 +2,7 @@ import HighlightCore
 import SwiftUI
 import UIKit
 
-/// Editable `RecordingConfig` plus storage management, and debug toggles in test builds.
+/// Editable `RecordingConfig` plus storage management, and debug toggles in debug and beta builds.
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.openURL) private var openURL
@@ -120,7 +120,7 @@ struct SettingsScreen: View {
                     } header: {
                         Text("Debug")
                     } footer: {
-                        Text("Only shown in TestFlight and debug builds. Unlock Pro grants montages and slow-mo without a subscription; the paywall still works for testing purchases.")
+                        Text("Only shown in debug and beta builds. Unlock Pro grants montages and slow-mo without a subscription; the paywall still works for testing purchases.")
                     }
                 }
 
