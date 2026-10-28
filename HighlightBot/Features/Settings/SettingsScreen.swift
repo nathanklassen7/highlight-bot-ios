@@ -22,7 +22,9 @@ struct SettingsScreen: View {
 
         NavigationStack {
             Form {
-                proSection
+                if subscriptions.isPaywallActive {
+                    proSection
+                }
 
                 Section {
                     Picker("Buffer length", selection: $settings.config.bufferSeconds) {
@@ -115,12 +117,17 @@ struct SettingsScreen: View {
 
                 if SubscriptionStore.isTestBuild {
                     Section {
-                        Toggle("Unlock Pro for testing", isOn: $subscriptions.isTestingOverrideEnabled)
+                        if !SubscriptionStore.isPaywallEnabled {
+                            Toggle("Preview paywall", isOn: $subscriptions.isPaywallPreviewEnabled)
+                        }
+                        if subscriptions.isPaywallActive {
+                            Toggle("Unlock Pro for testing", isOn: $subscriptions.isTestingOverrideEnabled)
+                        }
                         Toggle("Show pipeline metrics", isOn: $settings.config.debugOverlayEnabled)
                     } header: {
                         Text("Debug")
                     } footer: {
-                        Text("Only shown in debug and beta builds. Unlock Pro grants montages and slow-mo without a subscription; the paywall still works for testing purchases.")
+                        Text(debugFooter)
                     }
                 }
 
@@ -179,6 +186,19 @@ struct SettingsScreen: View {
                 }
             }
         }
+    }
+
+    // MARK: - Debug
+
+    private var debugFooter: String {
+        var text = "Only shown in debug and beta builds."
+        if !SubscriptionStore.isPaywallEnabled {
+            text += " Preview paywall shows the Pro upgrade flow and locks montages and slow-mo, as the paywall will behave once it launches."
+        }
+        if container.subscriptions.isPaywallActive {
+            text += " Unlock Pro grants montages and slow-mo without a subscription; the paywall still works for testing purchases."
+        }
+        return text
     }
 
     // MARK: - Pro
