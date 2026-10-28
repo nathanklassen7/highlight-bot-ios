@@ -3,7 +3,6 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import QuartzCore
-import OSLog
 import HighlightCore
 
 /// Errors from `FileReplayCaptureSource`.
@@ -140,7 +139,6 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
         lock.withLock { thread = replayThread }
         replayThread.start()
 
-        Log.capture.info("Replay started: \(self.fileURL.lastPathComponent, privacy: .public) \(width)x\(height)@\(fps) loop=\(self.loop)")
         emit(.started)
     }
 
@@ -238,8 +236,6 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
             let advance = assetDuration.isValid && assetDuration.seconds > 0 ? assetDuration : passEnd
             loopOffset = loopOffset + advance
         } while loop && !isStopRequested()
-
-        Log.capture.info("Replay loop exited after \(pass) pass(es)")
     }
 
     /// Reads the asset once, delivering every sample at `outputBase + pts`.

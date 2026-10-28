@@ -1,7 +1,6 @@
 import Foundation
 import CoreMedia
 import Speech
-import os
 import HighlightCore
 
 /// Saves a clip when someone says "clip it" while recording.
@@ -107,25 +106,20 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
             return wantsListening
         }
         guard !alreadyListening else { return }
-        Log.voice.info("Listening for \"\(Self.phrase, privacy: .public)\"")
         workQueue.async { [weak self] in self?.startRequestIfWanted() }
     }
 
     /// Stop recognising and drop the live request. Safe to call repeatedly.
     func endListening() {
-        let (task, wasListening) = lock.withLock { () -> (SFSpeechRecognitionTask?, Bool) in
-            let was = wantsListening
+        let task = lock.withLock { () -> SFSpeechRecognitionTask? in
             wantsListening = false
             generation += 1
             let task = self.task
             self.task = nil
             request = nil
-            return (task, was)
+            return task
         }
         task?.cancel()
-        if wasListening {
-            Log.voice.info("Stopped listening")
-        }
     }
 
     // MARK: - AudioSampleListener (capture queue)
@@ -153,7 +147,6 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
             return
         }
         guard recognizer.isAvailable else {
-            Log.voice.notice("Speech recognizer unavailable; retrying in \(self.unavailableRetryDelay, format: .fixed(precision: 0))s")
             scheduleStart(after: unavailableRetryDelay)
             return
         }
@@ -186,12 +179,11 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
             task.cancel()
             return
         }
-        Log.voice.debug("Recognition request #\(generation) started")
 
         let lifetime = requestLifetime
         workQueue.asyncAfter(deadline: .now() + lifetime) { [weak self] in
             guard let self, self.lock.withLock({ self.generation == generation && self.wantsListening }) else { return }
-            self.replaceRequest(reason: "lifetime")
+            self.replaceRequest()
         }
     }
 
@@ -202,7 +194,7 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
     }
 
     /// Cancel the live request and start another (after `delay`).
-    private func replaceRequest(reason: String, delay: TimeInterval = 0) {
+    private func replaceRequest(delay: TimeInterval = 0) {
         let task = lock.withLock { () -> SFSpeechRecognitionTask? in
             generation += 1
             let task = self.task
@@ -211,7 +203,6 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
             return task
         }
         task?.cancel()
-        Log.voice.debug("Recognition request replaced (\(reason, privacy: .public))")
         if delay > 0 {
             scheduleStart(after: delay)
         } else {
@@ -231,25 +222,20 @@ final class VoiceTrigger: NSObject, TriggerSource, AudioSampleListener, @uncheck
         guard current else { return }
 
         if newMatches > 0 {
-            Log.voice.info("Heard \"\(Self.phrase, privacy: .public)\" ×\(newMatches)")
-            guard let emit else {
-                Log.voice.notice("VoiceTrigger matched before start(); ignoring")
-                return
-            }
+            guard let emit else { return }
             for _ in 0..<newMatches {
                 emit(TriggerEvent(source: id, kind: .saveClip(seconds: nil)))
             }
-            replaceRequest(reason: "match")
+            replaceRequest()
             return
         }
 
         if let error {
             // Cancellation of a superseded task is expected and already filtered
             // by the generation check; anything else here is a real end.
-            Log.voice.notice("Recognition ended: \(error.localizedDescription, privacy: .public); restarting")
-            replaceRequest(reason: "error", delay: errorRetryDelay)
+            replaceRequest(delay: errorRetryDelay)
         } else if isFinal {
-            replaceRequest(reason: "final")
+            replaceRequest()
         }
     }
 }

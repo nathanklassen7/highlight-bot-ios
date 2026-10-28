@@ -1,7 +1,6 @@
 import Foundation
 import HighlightCore
 import SwiftData
-import os
 
 /// Main-actor facade over the SwiftData store for `Clip`. Deleting a clip also
 /// removes its media and thumbnail files.

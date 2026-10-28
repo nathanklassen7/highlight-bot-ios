@@ -2,7 +2,7 @@ import HighlightCore
 import SwiftUI
 
 /// Monospaced dump of `PipelineMetrics`, shown on the Record screen when
-/// `RecordingConfig.debugOverlayEnabled` is on.
+/// `RecordingConfig.debugOverlayEnabled` is on, in test builds only.
 struct DebugOverlay: View {
     let metrics: PipelineMetrics
 

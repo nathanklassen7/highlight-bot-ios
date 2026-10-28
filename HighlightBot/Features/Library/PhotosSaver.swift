@@ -1,6 +1,5 @@
 import Foundation
 import Photos
-import os
 
 /// Why a Save to Photos attempt failed.
 enum PhotosSaveError: Error, LocalizedError {
@@ -25,7 +24,6 @@ enum PhotosSaver {
 
         do {
             try await Self.addVideo(at: fileURL)
-            Log.ui.info("Saved \(fileURL.lastPathComponent) to Photos")
         } catch {
             Log.ui.error("Save to Photos failed: \(String(describing: error))")
             throw PhotosSaveError.underlying(error.localizedDescription)

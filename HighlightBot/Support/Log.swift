@@ -3,6 +3,8 @@ import OSLog
 
 /// Unified-logging handles for the app, one per pipeline stage.
 ///
+/// Only failures are logged (`error` and `fault`), so a tester's sysdiagnose
+/// explains why something broke without any per-frame or per-segment noise.
 /// Subsystem is `com.nathanklassen.highlightbot`. Filter in Console.app / `log stream` with
 /// `subsystem == "com.nathanklassen.highlightbot"` and the category of interest.
 enum Log {
@@ -16,11 +18,4 @@ enum Log {
     static let voice = Logger(subsystem: subsystem, category: "voice")
     static let ui = Logger(subsystem: subsystem, category: "ui")
     static let store = Logger(subsystem: subsystem, category: "store")
-}
-
-/// Signposters for Instruments. `capture` brackets every video data callback
-/// (interval name `videoCallback`) so the <1 ms budget from the plan can be
-/// checked with the os_signpost instrument.
-enum Signposts {
-    static let capture = OSSignposter(subsystem: Log.subsystem, category: "capture")
 }

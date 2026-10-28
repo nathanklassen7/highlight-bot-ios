@@ -32,21 +32,16 @@ final class HardwareTrigger: TriggerSource {
 
     /// Volume-up / Camera Control / shutter button 1.
     func firePrimary() {
-        send(.saveClip(seconds: nil), label: "primary")
+        send(.saveClip(seconds: nil))
     }
 
     /// Volume-down / shutter button 2.
     func fireSecondary() {
-        send(.saveClip(seconds: nil), label: "secondary")
+        send(.saveClip(seconds: nil))
     }
 
-    private func send(_ kind: TriggerKind, label: String) {
-        let emit = emitter.withLock { $0 }
-        guard let emit else {
-            Log.ui.notice("HardwareTrigger \(label, privacy: .public) fired before start(); ignoring")
-            return
-        }
-        Log.ui.info("HardwareTrigger \(label, privacy: .public) press")
+    private func send(_ kind: TriggerKind) {
+        guard let emit = emitter.withLock({ $0 }) else { return }
         emit(TriggerEvent(source: id, kind: kind))
     }
 }

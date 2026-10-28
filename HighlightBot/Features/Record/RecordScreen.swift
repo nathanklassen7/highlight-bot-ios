@@ -392,7 +392,7 @@ struct RecordScreen: View {
     }
 
     private var showsDebugOverlay: Bool {
-        !isDimmed && container.settings.config.debugOverlayEnabled
+        SubscriptionStore.isTestBuild && !isDimmed && container.settings.config.debugOverlayEnabled
     }
 
     // MARK: - Lens pills

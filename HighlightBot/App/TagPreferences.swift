@@ -1,7 +1,6 @@
 import Foundation
 import HighlightCore
 import Observation
-import os
 
 /// Small tag lists that outlive individual clips, kept in `UserDefaults`.
 ///

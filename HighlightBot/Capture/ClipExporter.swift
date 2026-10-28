@@ -3,7 +3,6 @@ import AVFoundation
 import CoreMedia
 import UIKit
 import os
-import OSLog
 import HighlightCore
 
 /// Result of a successful export.
@@ -70,7 +69,6 @@ final class ClipExporter: Sendable {
         defer {
             let seconds = (clock.now - started).timeInterval
             lastExport.withLock { $0 = seconds }
-            Log.export.info("Export \(baseName, privacy: .public) took \(seconds, format: .fixed(precision: 3))s")
         }
 
         let fileManager = FileManager.default
@@ -79,7 +77,6 @@ final class ClipExporter: Sendable {
         let outputURL = clipsDirectory.appending(path: baseName + ".mp4")
         defer { try? fileManager.removeItem(at: concatURL) }
 
-        Log.export.info("Exporting \(plan.mediaSegments.count) media segments (\(plan.duration, format: .fixed(precision: 2))s, \(plan.byteCount) bytes) as \(baseName, privacy: .public)")
         try concatenate(plan.urls, to: concatURL)
 
         let asset = AVURLAsset(url: concatURL)
@@ -89,7 +86,6 @@ final class ClipExporter: Sendable {
         do {
             try await Self.runExport(asset: asset, preset: AVAssetExportPresetPassthrough, to: outputURL)
         } catch {
-            Log.export.warning("Passthrough export failed (\(error.localizedDescription, privacy: .public)); re-encoding with HighestQuality")
             try await Self.runExport(asset: asset, preset: AVAssetExportPresetHighestQuality, to: outputURL)
         }
         let thumbnailURL = await thumbnail

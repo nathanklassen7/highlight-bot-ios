@@ -1,7 +1,6 @@
 import Foundation
 import HighlightCore
 import Observation
-import os
 
 /// Persists the user's `RecordingConfig` as JSON in `UserDefaults` and notifies
 /// the container when it changes.

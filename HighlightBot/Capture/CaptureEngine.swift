@@ -4,7 +4,6 @@ import CoreMedia
 import CoreVideo
 import QuartzCore
 import os
-import OSLog
 import HighlightCore
 
 /// Errors raised while configuring or starting the camera.
@@ -135,7 +134,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
     func setPreviewEnabled(_ enabled: Bool) {
         guard let connection = previewLayer?.connection, connection.isEnabled != enabled else { return }
         connection.isEnabled = enabled
-        Log.capture.info("Preview connection \(enabled ? "enabled" : "disabled", privacy: .public)")
         // Capture angle may have moved while the connection was off.
         if enabled { catchUpRotation() }
     }
@@ -237,7 +235,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                         self.session.startRunning()
                     }
                     guard self.session.isRunning else { throw CaptureError.failedToStart }
-                    Log.capture.info("Capture session running at \(self.currentFrameRate) fps")
                     self.emit(.started)
                     continuation.resume()
                 } catch {
@@ -255,7 +252,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     self.session.stopRunning()
                 }
                 self.deactivateAudioSession()
-                Log.capture.info("Capture session stopped")
                 self.emit(.stopped)
                 continuation.resume()
             }
@@ -267,10 +263,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             queue.async {
                 defer { continuation.resume() }
                 guard let device = self.videoDevice else { return }
-                guard fps > 0, Self.formatSupports(device.activeFormat, fps: fps) else {
-                    Log.capture.notice("setFrameRate(\(fps)) unsupported by active format; ignoring")
-                    return
-                }
+                guard fps > 0, Self.formatSupports(device.activeFormat, fps: fps) else { return }
                 guard fps != self.currentFrameRate else { return }
                 do {
                     try device.lockForConfiguration()
@@ -280,7 +273,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     device.unlockForConfiguration()
                     self.currentFrameRate = fps
                     let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
-                    Log.capture.notice("Frame rate changed to \(fps) fps")
                     self.emit(.formatChanged(width: Int(dims.width), height: Int(dims.height), frameRate: fps))
                 } catch {
                     Log.capture.error("setFrameRate lockForConfiguration failed: \(error.localizedDescription, privacy: .public)")
@@ -304,7 +296,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                     device.torchMode = mode
                     device.unlockForConfiguration()
                 } catch {
-                    Log.capture.notice("setTorch(\(on)) lockForConfiguration failed: \(error.localizedDescription, privacy: .public)")
+                    // Torch stays as it was.
                 }
             }
         }
@@ -411,7 +403,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         self.config = config
         isConfigured = true
 
-        Log.capture.info("Configured \(choice.width)x\(choice.height)@\(choice.frameRate) pixelFormat=\(Self.fourCC(choice.pixelFormat), privacy: .public) exact=\(choice.isExact)")
         if !choice.isExact {
             emit(.formatChanged(width: choice.width, height: choice.height, frameRate: choice.frameRate))
         }
@@ -429,11 +420,7 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
 
     private func deactivateAudioSession() {
         guard config?.needsMicrophone == true else { return }
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-        } catch {
-            Log.capture.notice("AVAudioSession deactivate failed: \(error.localizedDescription, privacy: .public)")
-        }
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     // MARK: - Notifications
@@ -445,12 +432,10 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             let raw = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
             let reason = raw.flatMap { AVCaptureSession.InterruptionReason(rawValue: $0) }
             let text = Self.describe(reason)
-            Log.capture.notice("Capture interrupted: \(text, privacy: .public)")
             self?.emit(.interrupted(reason: text))
         })
 
         observers.append(center.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { [weak self] _ in
-            Log.capture.notice("Capture interruption ended")
             self?.emit(.resumed)
         })
 
@@ -479,7 +464,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
                 self.session.startRunning()
             }
             if self.session.isRunning {
-                Log.capture.notice("Capture session restarted after media services reset")
                 self.emit(.resumed)
             } else {
                 self.emit(.runtimeError("Capture session could not restart after media services reset"))
@@ -503,7 +487,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
             if let ultra = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
                 return ultra
             }
-            Log.capture.notice("Ultra-wide camera unavailable; using wide")
             return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
         case .selfie:
             return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
@@ -595,16 +578,6 @@ final class CaptureEngine: CaptureSource, @unchecked Sendable {
         return format.videoSupportedFrameRateRanges.contains { range in
             range.minFrameRate <= target && target <= range.maxFrameRate
         }
-    }
-
-    private static func fourCC(_ code: OSType) -> String {
-        let bytes: [UInt8] = [
-            UInt8((code >> 24) & 0xFF),
-            UInt8((code >> 16) & 0xFF),
-            UInt8((code >> 8) & 0xFF),
-            UInt8(code & 0xFF),
-        ]
-        return String(decoding: bytes, as: UTF8.self)
     }
 
     private static func describe(_ reason: AVCaptureSession.InterruptionReason?) -> String {

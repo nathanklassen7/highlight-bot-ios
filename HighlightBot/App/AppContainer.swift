@@ -3,7 +3,6 @@ import HighlightCore
 import Observation
 import SwiftData
 import UIKit
-import os
 
 /// Errors raised by the app layer itself (not by Core or the capture pipeline).
 enum AppError: Error, LocalizedError {
@@ -400,7 +399,6 @@ final class AppContainer {
             isVoiceListening = false
             if !voiceProblemReported {
                 voiceProblemReported = true
-                Log.voice.notice("Voice trigger unavailable: \(problem, privacy: .public)")
                 errorMessage = problem
             }
             return
@@ -448,9 +446,6 @@ final class AppContainer {
         if let url = Bundle.main.url(forResource: "replay", withExtension: "mov") {
             return FileReplayCaptureSource(fileURL: url)
         }
-        Log.capture.warning(
-            "No replay.mov in the app bundle. Drop a .mov named replay.mov into HighlightBot/Resources/ and re-run xcodegen to exercise the pipeline in the Simulator. Either orientation works; a portrait file exercises the portrait path."
-        )
         return FileReplayCaptureSource(fileURL: AppDirectories.ring.appending(path: "missing-replay.mov"))
         #else
         return CaptureEngine()

@@ -21,6 +21,15 @@ open HighlightBot.xcodeproj
 
 In Xcode, select the `HighlightBot` target → Signing & Capabilities → set your Team. `project.yml` leaves `DEVELOPMENT_TEAM` blank on purpose. The `.xcodeproj` is generated; edit `project.yml`, not the project.
 
+## Release builds
+
+Developer controls (Settings › Debug: "Unlock Pro for testing" and "Show pipeline metrics", plus the Record screen metrics overlay) are compiled in only for Debug builds and for builds archived with the `BETA` flag. `BETA_FLAG` is empty in `project.yml`, so a plain Release archive is the production build and contains none of them.
+
+- **App Store / App Review archive:** archive as usual (Product › Archive, or `xcodebuild archive`). Do not set `BETA_FLAG`.
+- **TestFlight beta archive:** `xcodebuild archive -scheme HighlightBot BETA_FLAG=BETA ...`. The override is on by default in these builds.
+
+The check is `SubscriptionStore.isTestBuild`, a compile-time constant. The scheme's Run action uses the Release configuration, so a run from Xcode has no developer controls unless you switch the scheme to Debug or build with `BETA_FLAG=BETA`.
+
 ## Layout
 
 ```
@@ -29,7 +38,7 @@ HighlightBot/            App target (SwiftUI + AVFoundation)
   Capture/               CaptureEngine, SegmentedRecorder, ClipExporter, RecordingPipeline
   Triggers/              TapTrigger, HardwareTrigger, VoiceTrigger
   Features/              Record, Library, Editor (trim/edit), Settings screens
-  Support/               Permissions, storage/thermal monitors, logging
+  Support/               Permissions, storage/thermal monitors
   Resources/             Asset catalog; drop replay.mov here for the Simulator
 HighlightCore/           Swift package: ring buffer, clip assembly, session state machine, trigger bus
 docs/                    Plan and API contracts

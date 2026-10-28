@@ -69,12 +69,10 @@ final class MontageExporter: Sendable {
         }
 
         let clock = ContinuousClock()
-        let started = clock.now
         let outputURL = clipsDirectory.appending(path: baseName + ".mp4")
         let expectedDuration = items.reduce(0) { $0 + $1.outputDuration }
         let preset = await ClipTrimmer.preset(for: AVURLAsset(url: items[0].clip.fileURL))
         let frame = MontageFraming.renderSize(for: items, keeping: orientation)
-        Log.export.info("Exporting montage of \(items.count) clips (\(expectedDuration, format: .fixed(precision: 2))s) as \(baseName, privacy: .public) (\(preset, privacy: .public), \(orientation.rawValue, privacy: .public) \(frame.width)x\(frame.height))")
 
         let built = try await MontageComposition.build(
             items,
@@ -83,7 +81,6 @@ final class MontageExporter: Sendable {
         // A cancel during the build must not start the encode.
         try Task.checkCancellation()
         let estimate = ExportTimeEstimate(workloads: built.workloads, secondsPerUnit: ExportSpeedStore.secondsPerUnit())
-        Log.export.info("Montage estimate: \(estimate.units, format: .fixed(precision: 1)) units, ~\(estimate.totalSeconds, format: .fixed(precision: 1))s")
         onProgress(MontageExportProgress(fraction: Self.encodeStart, estimatedSecondsRemaining: estimate.totalSeconds))
 
         let encodeStarted = clock.now
@@ -121,8 +118,6 @@ final class MontageExporter: Sendable {
         let size = await ClipExporter.orientedSize(of: output)
         onProgress(MontageExportProgress(fraction: 1, estimatedSecondsRemaining: 0))
 
-        let seconds = (clock.now - started).timeInterval
-        Log.export.info("Montage \(baseName, privacy: .public) took \(seconds, format: .fixed(precision: 3))s (encode \(encodeSeconds, format: .fixed(precision: 3))s, estimate \(estimate.totalSeconds, format: .fixed(precision: 1))s)")
         return ExportedClip(
             fileURL: outputURL,
             thumbnailURL: thumbnailURL,

@@ -77,6 +77,11 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
+        # Developer controls (Pro override, pipeline metrics) exist only in Debug
+        # builds or when this is "BETA". Leave it empty for App Store archives; for
+        # a TestFlight build, archive with `BETA_FLAG=BETA` on the command line.
+        BETA_FLAG: ""
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) $(BETA_FLAG)"
         # Apple Developer team used for automatic signing. Change here (not in Xcode) so
         # `xcodegen generate` keeps it.
         DEVELOPMENT_TEAM: WMYF388QWV
