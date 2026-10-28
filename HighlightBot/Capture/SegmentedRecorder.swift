@@ -2,7 +2,6 @@ import Foundation
 import AVFoundation
 import CoreMedia
 import UniformTypeIdentifiers
-import OSLog
 import HighlightCore
 
 /// One `AVAssetWriter` in fMP4 segmented mode (`.mpeg4AppleHLS`). Emits an
@@ -52,7 +51,6 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     private var mediaSeq = 0
     private var skippedVideoAppendCount = 0
     private var skippedAudioAppendCount = 0
-    private var didLogFailure = false
     private var lastWriteMillis: Double = 0
     private var lastSegmentSeq = -1
 
@@ -136,10 +134,7 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         if videoRotationAngle != 0 {
             video.transform = CGAffineTransform(rotationAngle: videoRotationAngle * .pi / 180)
         }
-        guard newWriter.canAdd(video) else {
-            Log.recorder.error("Writer rejected video input settings")
-            return
-        }
+        guard newWriter.canAdd(video) else { return }
         newWriter.add(video)
 
         var audio: AVAssetWriterInput?
@@ -149,8 +144,6 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
             if newWriter.canAdd(input) {
                 newWriter.add(input)
                 audio = input
-            } else {
-                Log.recorder.error("Writer rejected audio input settings; recording video only")
             }
         }
 
@@ -161,11 +154,7 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         // callback. Frames arrive after this point, so their PTS is ≥ this time.
         let startTime = CMClockGetTime(clock)
         newWriter.initialSegmentStartTime = startTime
-        guard newWriter.startWriting() else {
-            let message = newWriter.error?.localizedDescription ?? "status \(newWriter.status.rawValue)"
-            Log.recorder.error("startWriting failed: \(message, privacy: .public)")
-            return
-        }
+        guard newWriter.startWriting() else { return }
 
         writer = newWriter
         videoInput = video
@@ -179,8 +168,6 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lastSegmentSeq = -1
         skippedVideoAppendCount = 0
         skippedAudioAppendCount = 0
-        didLogFailure = false
-        Log.recorder.info("Recorder writing session \(newSessionID.description, privacy: .public) (\(self.config.width)x\(self.config.height)@\(self.config.frameRate) \(self.config.codec.rawValue, privacy: .public)) from \(startTime.seconds, format: .fixed(precision: 3))")
     }
 
     /// Whether an on-demand flush is possible. Always `false` today.
@@ -205,11 +192,7 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
     func flushSegment() async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             queue.async {
-                self.lock.lock()
-                let writing = self.writer != nil && self.sessionStarted
-                self.lock.unlock()
                 // Intentionally never calls AVAssetWriter.flushSegment(); see supportsOnDemandFlush.
-                Log.recorder.debug("flushSegment: fixed-interval mode, waiting for boundary (writing=\(writing))")
                 continuation.resume(returning: false)
             }
         }
@@ -242,18 +225,12 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
             if writer.status == .writing {
                 writer.cancelWriting()
             }
-            Log.recorder.info("Recorder stopped before any frame arrived")
             return
         }
 
         video?.markAsFinished()
         audio?.markAsFinished()
         await writer.finishWriting()
-        if writer.status == .failed {
-            Log.recorder.error("finishWriting failed: \(writer.error?.localizedDescription ?? "unknown", privacy: .public)")
-        } else {
-            Log.recorder.info("Recorder stopped (status \(writer.status.rawValue))")
-        }
     }
 
     /// Detaches the writer and inputs from the recorder so no further appends
@@ -286,27 +263,18 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lastVideoPTS = pts
 
         if !sessionStarted {
-            guard writer.status == .writing else {
-                logFailureOnce(writer, context: "startSession (writer not writing)")
-                return
-            }
+            guard writer.status == .writing else { return }
             // A frame captured before the writer start time (in flight when the
             // consumer attached) cannot belong to the first segment; skip it.
             guard pts >= writerStartTime else { return }
             writer.startSession(atSourceTime: pts)
             sessionStarted = true
             sessionStartPTS = pts
-            Log.recorder.info("Writer session started at pts=\(pts.seconds, format: .fixed(precision: 3)) (\((pts - self.writerStartTime).seconds * 1_000, format: .fixed(precision: 0)) ms after writer start)")
         }
 
-        guard writer.status == .writing else {
-            logFailureOnce(writer, context: "append")
-            return
-        }
+        guard writer.status == .writing else { return }
         if input.isReadyForMoreMediaData {
-            if !input.append(sampleBuffer) {
-                logFailureOnce(writer, context: "appendVideo")
-            }
+            _ = input.append(sampleBuffer)
         } else {
             skippedVideoAppendCount += 1
         }
@@ -316,23 +284,10 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lock.lock(); defer { lock.unlock() }
         guard sessionStarted, let writer, writer.status == .writing, let input = audioInput else { return }
         if input.isReadyForMoreMediaData {
-            if !input.append(sampleBuffer) {
-                logFailureOnce(writer, context: "appendAudio")
-            }
+            _ = input.append(sampleBuffer)
         } else {
             skippedAudioAppendCount += 1
-            if skippedAudioAppendCount == 1 || skippedAudioAppendCount % 50 == 0 {
-                Log.recorder.notice("Audio input not ready; skipped \(self.skippedAudioAppendCount) audio buffers so far (audible gap)")
-            }
         }
-    }
-
-    /// Must be called with `lock` held.
-    private func logFailureOnce(_ writer: AVAssetWriter, context: String) {
-        guard !didLogFailure else { return }
-        didLogFailure = true
-        let message = writer.error?.localizedDescription ?? "status \(writer.status.rawValue)"
-        Log.recorder.error("Writer failure during \(context, privacy: .public): \(message, privacy: .public)")
     }
 
     // MARK: - AVAssetWriterDelegate
@@ -361,7 +316,6 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
             kind = .media
         @unknown default:
             lock.unlock()
-            Log.recorder.error("Unknown segment type \(segmentType.rawValue)")
             return
         }
         lock.unlock()
@@ -396,8 +350,6 @@ final class SegmentedRecorder: NSObject, AVAssetWriterDelegate, @unchecked Senda
         lastWriteMillis = millis
         lastSegmentSeq = seq
         lock.unlock()
-
-        Log.recorder.debug("segment session=\(sessionID.description, privacy: .public) seq=\(seq) kind=\(kind.rawValue, privacy: .public) bytes=\(segmentData.count) start=\(startTime, format: .fixed(precision: 3)) dur=\(duration, format: .fixed(precision: 3)) handoffMs=\(millis, format: .fixed(precision: 2))")
     }
 
     // MARK: - Settings

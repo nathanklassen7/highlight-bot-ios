@@ -71,16 +71,13 @@ final class SaveFeedback {
     private func beep() {
         guard let player = player ?? makePlayer() else { return }
         player.currentTime = 0
-        if !player.play() {
-            Log.ui.error("Save beep failed to start.")
-        }
+        player.play()
     }
 
     private func makePlayer() -> AVAudioPlayer? {
         guard !playerUnavailable else { return nil }
         guard let url = Bundle.main.url(forResource: "clip-saved", withExtension: "wav") else {
             playerUnavailable = true
-            Log.ui.error("clip-saved.wav missing from the app bundle; save beep disabled.")
             return nil
         }
         do {
@@ -90,7 +87,6 @@ final class SaveFeedback {
             return player
         } catch {
             playerUnavailable = true
-            Log.ui.error("Save beep could not be loaded: \(String(describing: error), privacy: .public)")
             return nil
         }
     }

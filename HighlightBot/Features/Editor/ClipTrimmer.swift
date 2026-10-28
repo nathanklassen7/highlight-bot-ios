@@ -85,8 +85,6 @@ final class ClipTrimmer: Sendable {
         let edit = ClipEdit(start: start, end: end, slowMotion: slowMotion, isSlowMotionReplay: replay, crop: crop)
         try Self.validate(edit)
 
-        let clock = ContinuousClock()
-        let started = clock.now
         let asset = AVURLAsset(url: sourceURL)
         let outputURL = clipsDirectory.appending(path: baseName + ".mp4")
         let preset = await Self.preset(for: asset)
@@ -101,12 +99,6 @@ final class ClipTrimmer: Sendable {
         if clampedSegment != nil || effectiveCrop != nil {
             if let clampedSegment {
                 expectedDuration += clampedSegment.addedDuration(replay: replay)
-                Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s with \(clampedSegment.start, format: .fixed(precision: 2))–\(clampedSegment.end, format: .fixed(precision: 2))s at \(clampedSegment.rate, format: .fixed(precision: 2))x replay=\(replay) as \(baseName, privacy: .public) (\(preset, privacy: .public))")
-            } else {
-                Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
-            }
-            if let effectiveCrop {
-                Log.export.info("Zooming \(baseName, privacy: .public) to \(effectiveCrop.scale, format: .fixed(precision: 2))x at \(effectiveCrop.centerX, format: .fixed(precision: 3)),\(effectiveCrop.centerY, format: .fixed(precision: 3))")
             }
             let built = try await Self.composition(of: asset, range: range, slowMotion: clampedSegment, replay: replay, crop: effectiveCrop)
             try await ClipExporter.runExport(
@@ -116,7 +108,6 @@ final class ClipTrimmer: Sendable {
                 to: outputURL
             )
         } else {
-            Log.export.info("Trimming \(sourceURL.lastPathComponent, privacy: .public) to \(start, format: .fixed(precision: 2))–\(end, format: .fixed(precision: 2))s as \(baseName, privacy: .public) (\(preset, privacy: .public))")
             try await ClipExporter.runExport(asset: asset, preset: preset, timeRange: range, to: outputURL)
         }
 
@@ -133,8 +124,6 @@ final class ClipTrimmer: Sendable {
         let sizeBytes = ClipExporter.fileSize(at: outputURL)
         let size = await ClipExporter.orientedSize(of: output)
 
-        let seconds = (clock.now - started).timeInterval
-        Log.export.info("Trim \(baseName, privacy: .public) took \(seconds, format: .fixed(precision: 3))s")
         return ExportedClip(
             fileURL: outputURL,
             thumbnailURL: thumbnailURL,
@@ -150,11 +139,7 @@ final class ClipTrimmer: Sendable {
     static func discard(_ exported: ExportedClip) {
         let fm = FileManager.default
         for url in [exported.fileURL, exported.thumbnailURL].compactMap({ $0 }) where fm.fileExists(atPath: url.path) {
-            do {
-                try fm.removeItem(at: url)
-            } catch {
-                Log.export.error("Failed to discard \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            }
+            try? fm.removeItem(at: url)
         }
     }
 

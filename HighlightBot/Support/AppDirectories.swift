@@ -33,11 +33,7 @@ enum AppDirectories {
 
     @discardableResult
     private static func ensure(_ url: URL) -> URL {
-        do {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        } catch {
-            Log.ui.error("Failed to create directory \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 
@@ -45,10 +41,6 @@ enum AppDirectories {
         var mutable = url
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
-        do {
-            try mutable.setResourceValues(values)
-        } catch {
-            Log.ui.error("Failed to exclude \(url.path, privacy: .public) from backup: \(error.localizedDescription, privacy: .public)")
-        }
+        try? mutable.setResourceValues(values)
     }
 }

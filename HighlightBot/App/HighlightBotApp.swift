@@ -2,7 +2,6 @@ import HighlightCore
 import SwiftData
 import SwiftUI
 import UIKit
-import os
 
 /// App entry point. Owns the single `AppContainer` and injects it into the view tree.
 @main
@@ -22,14 +21,9 @@ struct HighlightBotApp: App {
             switch phase {
             case .active:
                 // Capture resume is driven by the pipeline via CaptureEvent; nothing to do here.
-                Log.ui.info("Scene became active")
                 container.permissions.refresh()
                 Task { await container.subscriptions.refreshEntitlement() }
-            case .background:
-                Log.ui.info("Scene entered background; capture will be interrupted by the system")
-            case .inactive:
-                Log.ui.debug("Scene inactive")
-            @unknown default:
+            default:
                 break
             }
         }
@@ -60,9 +54,7 @@ enum InterfaceOrientationLock {
         for scene in scenes {
             scene.windows.forEach { $0.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations() }
             if let forced {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: forced)) { error in
-                    Log.ui.error("Failed to update interface orientation: \(error.localizedDescription)")
-                }
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: forced))
             }
         }
     }

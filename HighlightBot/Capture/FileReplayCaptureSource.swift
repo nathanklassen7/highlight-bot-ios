@@ -3,7 +3,6 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import QuartzCore
-import OSLog
 import HighlightCore
 
 /// Errors from `FileReplayCaptureSource`.
@@ -95,7 +94,6 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
     func start() async throws {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             let error = ReplayError.fileNotFound(fileURL)
-            Log.capture.error("\(error.localizedDescription, privacy: .public)")
             emit(.runtimeError(error.localizedDescription))
             throw error
         }
@@ -140,7 +138,6 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
         lock.withLock { thread = replayThread }
         replayThread.start()
 
-        Log.capture.info("Replay started: \(self.fileURL.lastPathComponent, privacy: .public) \(width)x\(height)@\(fps) loop=\(self.loop)")
         emit(.started)
     }
 
@@ -218,10 +215,8 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
         // same kind of monotonically increasing PTS the camera would produce.
         let base = CMClockGetTime(hostClock)
         var loopOffset = CMTime.zero
-        var pass = 0
 
         repeat {
-            pass += 1
             var passEnd = CMTime.zero
             do {
                 try runPass(asset: asset,
@@ -231,15 +226,12 @@ final class FileReplayCaptureSource: CaptureSource, @unchecked Sendable {
                             hostClock: hostClock,
                             passEnd: &passEnd)
             } catch {
-                Log.capture.error("Replay pass \(pass) failed: \(error.localizedDescription, privacy: .public)")
                 emit(.runtimeError(error.localizedDescription))
                 break
             }
             let advance = assetDuration.isValid && assetDuration.seconds > 0 ? assetDuration : passEnd
             loopOffset = loopOffset + advance
         } while loop && !isStopRequested()
-
-        Log.capture.info("Replay loop exited after \(pass) pass(es)")
     }
 
     /// Reads the asset once, delivering every sample at `outputBase + pts`.

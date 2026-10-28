@@ -1,7 +1,6 @@
 import Foundation
 import HighlightCore
 import SwiftData
-import os
 
 /// Main-actor facade over the SwiftData store for `Clip`. Deleting a clip also
 /// removes its media and thumbnail files.
@@ -41,7 +40,6 @@ final class ClipStore {
         do {
             return try context.fetch(FetchDescriptor<Clip>()).reduce(0) { $0 + $1.sizeBytes }
         } catch {
-            Log.ui.error("totalBytes fetch failed: \(String(describing: error))")
             return 0
         }
     }
@@ -112,7 +110,6 @@ final class ClipStore {
             let all = try context.fetch(FetchDescriptor<Clip>())
             return ClipTag.sortedForDisplay(ClipTag.merge([], all.flatMap(\.tags)))
         } catch {
-            Log.ui.error("usedTags fetch failed: \(String(describing: error))")
             return []
         }
     }
@@ -142,11 +139,7 @@ final class ClipStore {
         var urls = [record.fileURL]
         if let thumb = record.thumbnailURL { urls.append(thumb) }
         for url in urls where fm.fileExists(atPath: url.path) {
-            do {
-                try fm.removeItem(at: url)
-            } catch {
-                Log.ui.error("Failed to remove \(url.lastPathComponent): \(String(describing: error))")
-            }
+            try? fm.removeItem(at: url)
         }
     }
 }

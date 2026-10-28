@@ -349,7 +349,6 @@ struct MontageEditorScreen: View {
                 statusMessage = "Export cancelled"
                 return
             }
-            Log.export.error("Montage failed: \(String(describing: error), privacy: .public)")
             Haptics.error()
             statusMessage = "Export failed: \(error.localizedDescription)"
         }

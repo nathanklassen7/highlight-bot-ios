@@ -3,7 +3,6 @@ import HighlightCore
 import Observation
 import SwiftData
 import UIKit
-import os
 
 /// Errors raised by the app layer itself (not by Core or the capture pipeline).
 enum AppError: Error, LocalizedError {
@@ -185,21 +184,9 @@ final class AppContainer {
         permissions.refresh()
         subscriptions.start()
 
-        do {
-            try await triggerBus.register(tapTrigger)
-        } catch {
-            Log.ui.error("Failed to register TapTrigger: \(String(describing: error))")
-        }
-        do {
-            try await triggerBus.register(hardwareTrigger)
-        } catch {
-            Log.ui.error("Failed to register HardwareTrigger: \(String(describing: error))")
-        }
-        do {
-            try await triggerBus.register(voiceTrigger)
-        } catch {
-            Log.ui.error("Failed to register VoiceTrigger: \(String(describing: error))")
-        }
+        try? await triggerBus.register(tapTrigger)
+        try? await triggerBus.register(hardwareTrigger)
+        try? await triggerBus.register(voiceTrigger)
 
         let coordinator = coordinator
         let bus = triggerBus
@@ -237,7 +224,6 @@ final class AppContainer {
         do {
             try await pipeline.startPreview()
         } catch {
-            Log.ui.error("Preview failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -331,7 +317,6 @@ final class AppContainer {
             do {
                 try clipStore.insert(record)
             } catch {
-                Log.ui.error("Clip saved but could not be indexed: \(String(describing: error))")
                 errorMessage = "Clip saved, but the library could not be updated."
             }
             lastClip = record
@@ -400,7 +385,6 @@ final class AppContainer {
             isVoiceListening = false
             if !voiceProblemReported {
                 voiceProblemReported = true
-                Log.voice.notice("Voice trigger unavailable: \(problem, privacy: .public)")
                 errorMessage = problem
             }
             return
@@ -430,8 +414,7 @@ final class AppContainer {
             return try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema)])
         } catch {
             // A failed schema migration lands here and would show an empty
-            // library. Fault-level so it is not mistaken for a fresh install.
-            Log.ui.fault("Persistent ModelContainer failed; falling back to in-memory: \(String(describing: error), privacy: .public)")
+            // library.
             do {
                 return try ModelContainer(
                     for: schema,
@@ -448,9 +431,6 @@ final class AppContainer {
         if let url = Bundle.main.url(forResource: "replay", withExtension: "mov") {
             return FileReplayCaptureSource(fileURL: url)
         }
-        Log.capture.warning(
-            "No replay.mov in the app bundle. Drop a .mov named replay.mov into HighlightBot/Resources/ and re-run xcodegen to exercise the pipeline in the Simulator. Either orientation works; a portrait file exercises the portrait path."
-        )
         return FileReplayCaptureSource(fileURL: AppDirectories.ring.appending(path: "missing-replay.mov"))
         #else
         return CaptureEngine()

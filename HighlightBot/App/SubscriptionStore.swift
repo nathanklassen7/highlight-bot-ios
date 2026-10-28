@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import StoreKit
-import os
 
 /// Features that need HighlightBot Pro.
 enum ProFeature {
@@ -101,8 +100,6 @@ final class SubscriptionStore {
                 if case .verified(let transaction) = result {
                     self.record(transaction)
                     await transaction.finish()
-                } else {
-                    Log.store.error("Unverified transaction update for \(result.unsafePayloadValue.productID, privacy: .public)")
                 }
                 await self.refreshEntitlement()
             }
@@ -124,9 +121,6 @@ final class SubscriptionStore {
            case .verified(let transaction)? = await Transaction.latest(for: Self.productID),
            Self.grantsPro(transaction) {
             active = true
-        }
-        if active != isSubscribed {
-            Log.store.info("Pro entitlement changed: \(active, privacy: .public)")
         }
         isSubscribed = active
     }
@@ -154,12 +148,8 @@ final class SubscriptionStore {
         loadState = .loading
         do {
             product = try await Product.products(for: [Self.productID]).first
-            if product == nil {
-                Log.store.error("App Store returned no product for \(Self.productID, privacy: .public)")
-            }
             loadState = product == nil ? .failed : .loaded
         } catch {
-            Log.store.error("Loading products failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed
         }
     }
@@ -170,7 +160,6 @@ final class SubscriptionStore {
         switch result {
         case .success(let verification):
             guard case .verified(let transaction) = verification else {
-                Log.store.error("Purchase returned an unverified transaction for \(verification.unsafePayloadValue.productID, privacy: .public)")
                 throw SubscriptionError.unverified
             }
             record(transaction)

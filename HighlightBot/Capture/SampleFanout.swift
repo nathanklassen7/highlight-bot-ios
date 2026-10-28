@@ -1,7 +1,6 @@
 import Foundation
 import CoreMedia
 import os
-import OSLog
 
 /// The one object on the capture queue. Every video sample goes to the
 /// recorder (synchronously, on this thread) and its pixel buffer to the
@@ -35,7 +34,6 @@ final class SampleFanout: SampleConsumer, Sendable {
 
     func consumeVideo(_ sampleBuffer: CMSampleBuffer) {
         let startNanos = DispatchTime.now().uptimeNanoseconds
-        let interval = Signposts.capture.beginInterval("videoCallback")
 
         recorder.appendVideo(sampleBuffer)
         if let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
@@ -45,7 +43,6 @@ final class SampleFanout: SampleConsumer, Sendable {
             )
         }
 
-        Signposts.capture.endInterval("videoCallback", interval)
         let micros = Double(DispatchTime.now().uptimeNanoseconds - startNanos) / 1_000
         counters.withLock {
             $0.capturedFrames += 1
@@ -63,11 +60,7 @@ final class SampleFanout: SampleConsumer, Sendable {
     }
 
     func didDropVideoFrame() {
-        let total = counters.withLock { c -> Int in
-            c.droppedFrames += 1
-            return c.droppedFrames
-        }
-        Log.capture.error("Capture output dropped a video frame (total \(total))")
+        counters.withLock { $0.droppedFrames += 1 }
     }
 
     func snapshotCounters() -> Counters {

@@ -1,7 +1,6 @@
 import Foundation
 import HighlightCore
 import Observation
-import os
 
 /// Persists the user's `RecordingConfig` as JSON in `UserDefaults` and notifies
 /// the container when it changes.
@@ -47,23 +46,15 @@ final class SettingsStore {
     }
 
     private func persist() {
-        do {
-            let data = try JSONEncoder().encode(config)
-            defaults.set(data, forKey: Self.key)
-        } catch {
-            Log.ui.error("Failed to persist recording config: \(String(describing: error))")
-        }
+        guard let data = try? JSONEncoder().encode(config) else { return }
+        defaults.set(data, forKey: Self.key)
     }
 
     private static func load(from defaults: UserDefaults) -> RecordingConfig? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        do {
-            let decoded = try JSONDecoder().decode(RecordingConfig.self, from: data)
-            // Ignore persisted configs that no longer validate (e.g. after a schema change).
-            return decoded.validate().isEmpty ? decoded.resolved() : nil
-        } catch {
-            Log.ui.error("Failed to decode persisted recording config; using defaults: \(String(describing: error))")
-            return nil
-        }
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode(RecordingConfig.self, from: data)
+        else { return nil }
+        // Ignore persisted configs that no longer validate (e.g. after a schema change).
+        return decoded.validate().isEmpty ? decoded.resolved() : nil
     }
 }

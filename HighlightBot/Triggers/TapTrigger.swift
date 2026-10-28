@@ -32,11 +32,7 @@ final class TapTrigger: TriggerSource {
     }
 
     private func send(_ kind: TriggerKind) {
-        let emit = emitter.withLock { $0 }
-        guard let emit else {
-            Log.ui.notice("TapTrigger fired before start(); ignoring")
-            return
-        }
+        guard let emit = emitter.withLock({ $0 }) else { return }
         emit(TriggerEvent(source: id, kind: kind))
     }
 }

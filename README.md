@@ -29,7 +29,7 @@ HighlightBot/            App target (SwiftUI + AVFoundation)
   Capture/               CaptureEngine, SegmentedRecorder, ClipExporter, RecordingPipeline
   Triggers/              TapTrigger, HardwareTrigger, VoiceTrigger
   Features/              Record, Library, Editor (trim/edit), Settings screens
-  Support/               Permissions, storage/thermal monitors, logging
+  Support/               Permissions, storage/thermal monitors
   Resources/             Asset catalog; drop replay.mov here for the Simulator
 HighlightCore/           Swift package: ring buffer, clip assembly, session state machine, trigger bus
 docs/                    Plan and API contracts

@@ -69,7 +69,7 @@ highlight-bot-ios/
       Record/                   # Live preview screen
       Library/                  # Clip grid, player, share, delete
       Settings/
-    Support/                    # Permissions, thermal, storage, logging
+    Support/                    # Permissions, thermal, storage
   HighlightCore/                # SPM package: no UIKit/AVFoundation-capture deps
     Sources/HighlightCore/
       RingBuffer/               # SegmentRingBuffer, Segment, eviction policy

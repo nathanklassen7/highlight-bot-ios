@@ -2,7 +2,6 @@ import Foundation
 import AVFoundation
 import CoreMedia
 import os
-import OSLog
 import HighlightCore
 
 /// One-second snapshot of pipeline health for the debug overlay and logs.
@@ -162,11 +161,7 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // Apply capture-format changes to the live viewfinder right away when
         // we are not recording; while recording they wait for the next start.
         if previewing && !recording {
-            do {
-                try await startPreview()
-            } catch {
-                Log.session.error("Reconfiguring preview failed: \(error.localizedDescription, privacy: .public)")
-            }
+            try? await startPreview()
         }
     }
 
@@ -218,10 +213,8 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             }
             guard stillWanted else {
                 await source.stop()
-                Log.session.info("Preview start abandoned; camera stopped")
                 return
             }
-            Log.session.info("Preview started")
             startMetricsTask()
         }
         ensureEventsTask()
@@ -237,7 +230,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         await source.stop()
         state.withLock { $0.isSourceRunning = false }
         stopMetricsTask()
-        Log.session.info("Preview stopped")
     }
 
     // MARK: - RecordingBackend
@@ -246,7 +238,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let config = state.withLock { $0.config }
         let freeBytes = StorageMonitor.freeBytes(at: AppDirectories.ring)
         guard freeBytes >= config.minimumFreeBytes else {
-            Log.session.error("Refusing to record: \(freeBytes) bytes free < \(config.minimumFreeBytes) required")
             throw PipelineError.lowStorage(freeBytes: freeBytes)
         }
         if state.withLock({ $0.isRecording }) {
@@ -288,7 +279,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         }
         ensureEventsTask()
         startSessionTasks()
-        Log.session.info("Recording started (\(config.width)x\(config.height)@\(config.frameRate), \(config.segmentInterval, format: .fixed(precision: 1))s segments, retain \(config.retainSeconds, format: .fixed(precision: 1))s)")
     }
 
     func stopRecording() async {
@@ -310,16 +300,11 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         // preview stuck sideways with nothing to unstick it.
         source.setRotationFrozen(false)
         await recorder?.stop()
-        do {
-            try await ring.clear()
-        } catch {
-            Log.ring.error("ring.clear failed: \(error.localizedDescription, privacy: .public)")
-        }
+        try? await ring.clear()
         // Back to the idle rate; the viewfinder does not need 60 fps.
         if state.withLock({ $0.isSourceRunning }) {
             await applyFrameRatePolicy()
         }
-        Log.session.info("Recording stopped")
     }
 
     /// Wait for the segment containing the trigger moment to land in the ring,
@@ -345,18 +330,14 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let maxWait = min(expected + 1.5, config.segmentInterval + 2.0)
         let deadline = waitStarted + .milliseconds(Int64(maxWait * 1_000))
 
-        var arrived = false
         while ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(50))
             let buffered = await ring.bufferedSeconds
             let count = await ring.segments.count
             if buffered > bufferedBefore || count > segmentsBefore {
-                arrived = true
                 break
             }
         }
-        let waitedMillis = (ContinuousClock.now - waitStarted).timeInterval * 1_000
-        Log.session.info("Trigger tail \(arrived ? "arrived" : "did not arrive", privacy: .public) after \(waitedMillis, format: .fixed(precision: 0)) ms (expected \(expected, format: .fixed(precision: 2))s, flushed=\(flushed))")
 
         guard let plan = await ring.snapshot(lastSeconds: lastSeconds) else {
             throw PipelineError.nothingToSave
@@ -389,7 +370,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let recorder = state.withLock { $0.isRecording ? $0.recorder : nil }
         guard let recorder else { throw PipelineError.notRecording }
         await recorder.restart()
-        Log.session.notice("Writer session restarted")
     }
 
     // MARK: - Segment handoff
@@ -400,15 +380,9 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         let received = DispatchTime.now().uptimeNanoseconds
         let ring = self.ring
         Task(priority: .utility) { [weak self] in
-            do {
-                let stored = try await ring.append(segment)
-                let millis = Double(DispatchTime.now().uptimeNanoseconds - received) / 1_000_000
-                self?.state.withLock { $0.lastRingWriteMillis = millis }
-                let buffered = await ring.bufferedSeconds
-                Log.ring.debug("stored \(stored.id, privacy: .public) \(stored.kind.rawValue, privacy: .public) \(stored.byteCount) bytes in \(millis, format: .fixed(precision: 2)) ms; buffered \(buffered, format: .fixed(precision: 2))s")
-            } catch {
-                Log.ring.error("ring.append failed for seq \(segment.seq): \(error.localizedDescription, privacy: .public)")
-            }
+            guard (try? await ring.append(segment)) != nil else { return }
+            let millis = Double(DispatchTime.now().uptimeNanoseconds - received) / 1_000_000
+            self?.state.withLock { $0.lastRingWriteMillis = millis }
         }
     }
 
@@ -439,19 +413,15 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
         switch event {
         case .started, .stopped:
             break
-        case .formatChanged(let width, let height, let frameRate):
+        case .formatChanged(_, _, let frameRate):
             state.withLock { $0.currentFrameRate = frameRate }
-            Log.session.notice("Capture format now \(width)x\(height)@\(frameRate)")
-        case .interrupted(let reason):
-            Log.session.notice("Capture interrupted: \(reason, privacy: .public)")
+        case .interrupted:
             guard isRecording else { return }
             await coordinator.captureDidInterrupt()
         case .resumed:
-            Log.session.notice("Capture resumed")
             guard isRecording else { return }
             await coordinator.captureDidResume()
         case .runtimeError(let message):
-            Log.session.error("Capture failed: \(message, privacy: .public)")
             state.withLock { $0.isSourceRunning = false }
             stopMetricsTask()
             guard isRecording else { return }
@@ -533,7 +503,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             thermalState: info.thermalState,
             lowPowerMode: info.isLowPowerModeEnabled
         )
-        Log.session.debug("Frame rate policy → \(target) fps (recording=\(recording) thermal=\(info.thermalState.rawValue) lowPower=\(info.isLowPowerModeEnabled))")
         // Success emits `.formatChanged`, which updates `currentFrameRate`.
         // High-fps slo-mo formats are sometimes locked to 120/240; `setFrameRate`
         // is then a no-op and metrics keep reporting the real rate.
@@ -563,7 +532,6 @@ final class RecordingPipeline: RecordingBackend, @unchecked Sendable {
             rotationDegrees: Int(source.captureRotationAngle.rounded()),
             sessionID: recorder?.currentSessionID
         )
-        Log.session.debug("metrics frames=\(metrics.capturedFrames) dropped=\(metrics.droppedFrames) analyzerDropped=\(metrics.analyzerDroppedFrames) buffered=\(metrics.bufferedSeconds, format: .fixed(precision: 1))s cbMicros=\(metrics.lastCallbackMicros, format: .fixed(precision: 0)) cbMaxMicros=\(counters?.maxCallbackMicros ?? 0, format: .fixed(precision: 0)) writeMs=\(metrics.lastSegmentWriteMillis, format: .fixed(precision: 1)) cpu=\(metrics.cpuPercent, format: .fixed(precision: 0))% skippedVideo=\(metrics.skippedVideoAppends) skippedAudio=\(metrics.skippedAudioAppends) fps=\(metrics.currentFrameRate) rotation=\(metrics.rotationDegrees) thermal=\(metrics.thermalState.rawValue)")
         return metrics
     }
 
