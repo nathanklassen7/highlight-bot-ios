@@ -23,7 +23,11 @@ In Xcode, select the `HighlightBot` target → Signing & Capabilities → set yo
 
 ## Release builds
 
-Developer controls (Settings › Debug: "Unlock Pro for testing" and "Show pipeline metrics", plus the Record screen metrics overlay) are compiled in only for Debug builds and for builds archived with the `BETA` flag. `BETA_FLAG` is empty in `project.yml`, so a plain Release archive is the production build and contains none of them.
+v1 ships with `SubscriptionStore.isPaywallEnabled = false`: no paywall, Pro, or purchase UI, nothing is locked, and the app never contacts StoreKit. To launch payments, set it to `true`, create the subscription in App Store Connect and attach it to the app version, and ship an update. The subscription code, `PaywallScreen`, and `HighlightBot.storekit` stay in place for that release.
+
+To test the paywall before launch, TestFlight (`BETA`) and Debug builds add a persisted Settings › Debug › "Preview paywall" toggle (off by default). It has no effect in a production archive.
+
+Developer controls (Settings › Debug: "Preview paywall", "Unlock Pro for testing" (only while the paywall is active), and "Show pipeline metrics", plus the Record screen metrics overlay) are compiled in only for Debug builds and for builds archived with the `BETA` flag. `BETA_FLAG` is empty in `project.yml`, so a plain Release archive is the production build and contains none of them.
 
 - **App Store / App Review archive:** archive as usual (Product › Archive, or `xcodebuild archive`). Do not set `BETA_FLAG`.
 - **TestFlight beta archive:** `xcodebuild archive -scheme HighlightBot BETA_FLAG=BETA ...`. The override is on by default in these builds.
